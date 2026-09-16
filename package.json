@@ -1,0 +1,36 @@
+{
+  "name": "whatsapp-rsvp",
+  "version": "1.0.0",
+  "description": "WhatsApp-only RSVP bot powered by Zernio",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/src/index.js",
+    "build": "tsc && cp src/db/schema.sql dist/src/db/schema.sql && cp src/admin/styles.css dist/src/admin/styles.css",
+    "setup:check": "tsx scripts/setup-zernio.ts",
+    "setup:template": "tsx scripts/create-template.ts",
+    "setup:reminder-template": "tsx scripts/create-reminder-template.ts",
+    "setup:webhook": "tsx scripts/register-webhook.ts",
+    "test": "DATABASE_PATH=:memory: tsx --test test/**/*.test.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@zernio/node": "^0.2.672",
+    "better-sqlite3": "^11.9.1",
+    "chrono-node": "^2.10.1",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "multer": "^2.3.0",
+    "sharp": "^0.35.4"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/express": "^5.0.0",
+    "@types/multer": "^2.2.0",
+    "@types/node": "^22.13.10",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  }
+}
