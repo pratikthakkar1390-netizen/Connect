@@ -6,6 +6,7 @@ import {
   getDb,
   setConversationState,
 } from '../src/db/store.js';
+import { WHATSAPP_LIST_ROW_TITLE_LIMIT } from '../src/whatsapp/eventList.js';
 import {
   ADD_DETAILS,
   SKIP_DETAILS,
@@ -34,6 +35,7 @@ import {
   continueCreateEventFlow,
   formatDateQuestion,
   formatEventConfirmation,
+  formatReminderDays,
   formatTimeQuestion,
   parseChildrenPolicyChoice,
   parseRsvpDeadlineChoice,
@@ -136,10 +138,17 @@ function assertWhatsAppLegalReminderPrompt(reply: SendMessageParams): void {
   assert.equal(reply.buttons, undefined);
   assert.deepEqual(reply.list, reminderChoiceList());
   assert.equal(reply.list?.button, REMINDER_LIST_BUTTON);
+  assert.equal(reply.list?.sections[0].title, 'RSVP Reminder');
   assert.equal(reply.list?.sections[0].rows.length, 4);
   assert.deepEqual(
     reply.list?.sections[0].rows.map((row) => row.id),
     [REMINDER_1, REMINDER_2, REMINDER_3, REMINDER_NONE],
+  );
+  assert.equal(
+    reply.list?.sections[0].rows.every(
+      (row) => row.title.length <= WHATSAPP_LIST_ROW_TITLE_LIMIT,
+    ),
+    true,
   );
 }
 
@@ -234,8 +243,11 @@ test('reminder uses interactive buttons and a valid tap skips extra confirm', as
 
   assert.deepEqual(
     REMINDER_BUTTONS.map((button) => button.title),
-    ['1 day before', '2 days before', '3 days before', 'No reminder'],
+    ['1 day before RSVP closes', '2 days before RSVP close', '3 days before RSVP close', 'No reminder'],
   );
+  assert.equal(formatReminderDays(null), 'No reminder');
+  assert.equal(formatReminderDays(1), '1 day before RSVP closes');
+  assert.equal(formatReminderDays(2), '2 days before RSVP closes');
 
   await continueCreateEventFlow(ctx, 'REMINDER_1');
 
@@ -513,9 +525,9 @@ test('No reminder button stores null and goes to the create confirm only', async
 });
 
 const REMINDER_CHOICES = [
-  { title: '1 day before', payload: REMINDER_1, days: 1 },
-  { title: '2 days before', payload: REMINDER_2, days: 2 },
-  { title: '3 days before', payload: REMINDER_3, days: 3 },
+  { title: '1 day before RSVP closes', payload: REMINDER_1, days: 1 },
+  { title: '2 days before RSVP close', payload: REMINDER_2, days: 2 },
+  { title: '3 days before RSVP close', payload: REMINDER_3, days: 3 },
   { title: 'No reminder', payload: REMINDER_NONE, days: null },
 ] as const;
 
@@ -593,9 +605,9 @@ test('selected reminder days are preserved through confirmation', async () => {
       ...ctx,
       interactiveId: REMINDER_2,
       interactiveType: 'list_reply',
-      text: '2 days before',
+      text: '2 days before RSVP close',
     },
-    '2 days before',
+    '2 days before RSVP close',
   );
   await continueCreateEventFlow(
     {
@@ -609,7 +621,7 @@ test('selected reminder days are preserved through confirmation', async () => {
   const confirming = getConversationState(PHONE);
   assert.equal(confirming?.state, 'CONFIRMING_EVENT');
   assert.equal(confirming?.reminder_days, 2);
-  assert.match(formatEventConfirmation(confirming!), /Reminder: 2 days before deadline/);
+  assert.match(formatEventConfirmation(confirming!), /Reminder: 2 days before RSVP closes/);
 
   await continueCreateEventFlow(
     {

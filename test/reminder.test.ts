@@ -35,6 +35,9 @@ test('parseReminderDaysChoice accepts reminder button titles and payloads', () =
   assert.equal(parseReminderDaysChoice('1 day before'), 1);
   assert.equal(parseReminderDaysChoice('2 days before'), 2);
   assert.equal(parseReminderDaysChoice('3 days before'), 3);
+  assert.equal(parseReminderDaysChoice('1 day before RSVP closes'), 1);
+  assert.equal(parseReminderDaysChoice('2 days before RSVP close'), 2);
+  assert.equal(parseReminderDaysChoice('3 days before RSVP closes'), 3);
   assert.equal(parseReminderDaysChoice('No reminder'), null);
   assert.equal(parseReminderDaysChoice('REMINDER_1'), 1);
   assert.equal(parseReminderDaysChoice('REMINDER_2'), 2);

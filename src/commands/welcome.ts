@@ -23,6 +23,7 @@ import {
 } from '../zernio/client.js';
 import {
   continueCreateEventFlow,
+  formatReminderDays,
   startCreateEventFlow,
 } from './createEventFlow.js';
 import { myEventsPageUrl } from '../http/myEventsToken.js';
@@ -294,9 +295,7 @@ export function formatEventDetailsMessage(event: Event): string {
     extra.push(`👗 What to Wear: ${event.dress_code.trim()}`);
   }
   if (event.reminder_days != null) {
-    extra.push(
-      `Reminder: ${event.reminder_days} day${event.reminder_days === 1 ? '' : 's'} before deadline`,
-    );
+    extra.push(`Reminder: ${formatReminderDays(event.reminder_days)}`);
   }
   return extra.length > 0
     ? `${formatEventInviteCard(event)}\n\n${extra.join('\n')}`

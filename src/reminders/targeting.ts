@@ -73,21 +73,27 @@ export function parseReminderDaysChoice(input: string): number | null | undefine
   if (
     trimmed === '1' ||
     trimmed === 'REMINDER_1' ||
-    trimmed === '1 DAY BEFORE'
+    trimmed === '1 DAY BEFORE' ||
+    trimmed === '1 DAY BEFORE RSVP CLOSES' ||
+    trimmed === '1 DAY BEFORE RSVP CLOSE'
   ) {
     return 1;
   }
   if (
     trimmed === '2' ||
     trimmed === 'REMINDER_2' ||
-    trimmed === '2 DAYS BEFORE'
+    trimmed === '2 DAYS BEFORE' ||
+    trimmed === '2 DAYS BEFORE RSVP CLOSES' ||
+    trimmed === '2 DAYS BEFORE RSVP CLOSE'
   ) {
     return 2;
   }
   if (
     trimmed === '3' ||
     trimmed === 'REMINDER_3' ||
-    trimmed === '3 DAYS BEFORE'
+    trimmed === '3 DAYS BEFORE' ||
+    trimmed === '3 DAYS BEFORE RSVP CLOSES' ||
+    trimmed === '3 DAYS BEFORE RSVP CLOSE'
   ) {
     return 3;
   }

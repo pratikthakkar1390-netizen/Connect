@@ -21,6 +21,7 @@ import {
   statCards,
   statusBadge,
 } from './html.js';
+import { formatReminderDays } from '../commands/createEventFlow.js';
 import { adminGuestLabel } from './privacy.js';
 
 function eventLifecycle(event: {
@@ -286,7 +287,7 @@ export function renderEventDetail(
         event.reminder_sent_at
           ? `Sent ${formatDateTime(event.reminder_sent_at)}`
           : event.reminder_days
-            ? `Configured (${event.reminder_days} days)`
+            ? `Configured (${formatReminderDays(event.reminder_days)})`
             : 'Not configured'
       }</span></div>
       <div class="kv"><span class="kv-label">Invitation types</span><span>${esc(invitationSummary(detail.invitations))}</span></div>

@@ -52,11 +52,14 @@ export const MERIDIEM_PROMPT =
   '⏰ What time should the event start? Please include AM or PM, for example 7:30 PM.';
 export const SPECIFIC_TIME_PROMPT =
   'I need a specific start time, for example 7:30 PM.';
-export const REMINDER_PROMPT = '⏰ When should we send the RSVP reminder?';
+export const REMINDER_PROMPT = `🔔 RSVP Reminder
+
+Reminders are sent before RSVPs close, not before the event.`;
+/** List row titles must stay ≤ 24 characters (WhatsApp limit). */
 export const REMINDER_BUTTONS = [
-  { title: '1 day before', payload: REMINDER_1 },
-  { title: '2 days before', payload: REMINDER_2 },
-  { title: '3 days before', payload: REMINDER_3 },
+  { title: '1 day before RSVP closes', payload: REMINDER_1 },
+  { title: '2 days before RSVP close', payload: REMINDER_2 },
+  { title: '3 days before RSVP close', payload: REMINDER_3 },
   { title: 'No reminder', payload: REMINDER_NONE },
 ];
 /** WhatsApp allows only 3 reply buttons; 4 reminder choices must be a list. */
@@ -105,7 +108,7 @@ export function reminderChoiceList(): NonNullable<SendMessageParams['list']> {
     button: REMINDER_LIST_BUTTON,
     sections: [
       {
-        title: 'Reminder',
+        title: 'RSVP Reminder',
         rows: REMINDER_BUTTONS.map((button) => ({
           id: button.payload,
           title: button.title,
@@ -1006,11 +1009,13 @@ function formatChildrenPolicy(allowed: number | null | undefined): string {
   return (allowed ?? 1) === 1 ? 'Adults & Children' : 'Adults only';
 }
 
-function formatReminderDays(days: number | null | undefined): string {
+export function formatReminderDays(days: number | null | undefined): string {
   if (days === null || days === undefined) {
-    return 'None';
+    return 'No reminder';
   }
-  return `${days} day${days === 1 ? '' : 's'} before deadline`;
+  return days === 1
+    ? '1 day before RSVP closes'
+    : `${days} days before RSVP closes`;
 }
 
 function dateParseFailureMessage(
