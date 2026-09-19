@@ -219,3 +219,51 @@ CREATE TABLE IF NOT EXISTS vendor_availability (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS vendor_orders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  vendor_id INTEGER NOT NULL REFERENCES vendors(id),
+  order_number TEXT NOT NULL UNIQUE,
+  customer_phone TEXT NOT NULL,
+  customer_name TEXT,
+  pickup_date TEXT NOT NULL,
+  pickup_time TEXT NOT NULL,
+  payment_method TEXT NOT NULL DEFAULT 'PAY_AT_COUNTER',
+  status TEXT NOT NULL DEFAULT 'NEW',
+  total_amount INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  accepted_at TEXT,
+  preparing_at TEXT,
+  ready_at TEXT,
+  picked_up_at TEXT,
+      cancelled_at TEXT,
+      cancelled_by TEXT,
+      vendor_notified_at TEXT
+    );
+
+CREATE INDEX IF NOT EXISTS idx_vendor_orders_vendor
+  ON vendor_orders (vendor_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_vendor_orders_customer
+  ON vendor_orders (customer_phone, created_at);
+CREATE INDEX IF NOT EXISTS idx_vendor_orders_status
+  ON vendor_orders (vendor_id, status);
+
+CREATE TABLE IF NOT EXISTS vendor_order_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id INTEGER NOT NULL REFERENCES vendor_orders(id) ON DELETE CASCADE,
+  vendor_product_id INTEGER,
+  product_name_snapshot TEXT NOT NULL,
+  quantity INTEGER NOT NULL,
+  unit_price INTEGER NOT NULL,
+  line_total INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_vendor_order_items_order
+  ON vendor_order_items (order_id);
+
+CREATE TABLE IF NOT EXISTS vendor_order_sequences (
+  vendor_id INTEGER PRIMARY KEY,
+  next_number INTEGER NOT NULL
+);

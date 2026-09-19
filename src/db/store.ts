@@ -166,7 +166,17 @@ export type ConversationStep =
   | 'VENDOR_PRODUCT_ACTIONS'
   | 'VENDOR_PRODUCT_EDIT_VALUE'
   | 'VENDOR_AVAILABILITY'
-  | 'VENDOR_AVAILABILITY_EDIT';
+  | 'VENDOR_AVAILABILITY_EDIT'
+  | 'VENDOR_ORDER_MENU'
+  | 'VENDOR_ORDER_QTY'
+  | 'VENDOR_ORDER_CART'
+  | 'VENDOR_ORDER_CHANGE'
+  | 'VENDOR_ORDER_PICKUP_DATE'
+  | 'VENDOR_ORDER_PICKUP_TIME'
+  | 'VENDOR_ORDER_REVIEW'
+  | 'VENDOR_ORDERS_LIST'
+  | 'VENDOR_ORDER_DETAIL'
+  | 'VENDOR_ORDER_CANCEL_CONFIRM';
 
 export type EventUpdateType = 'info' | 'ack' | 'cancel';
 export type EventUpdateSendStatus = 'sent' | 'failed';
@@ -959,6 +969,75 @@ export function ensureVendorTables(
       WHERE zernio_whatsapp_account_id IS NOT NULL
         AND trim(zernio_whatsapp_account_id) != ''
   `);
+  ensureVendorOrderTables(database);
+}
+
+function ensureVendorOrderTables(database: Database.Database): void {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS vendor_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      vendor_id INTEGER NOT NULL REFERENCES vendors(id),
+      order_number TEXT NOT NULL UNIQUE,
+      customer_phone TEXT NOT NULL,
+      customer_name TEXT,
+      pickup_date TEXT NOT NULL,
+      pickup_time TEXT NOT NULL,
+      payment_method TEXT NOT NULL DEFAULT 'PAY_AT_COUNTER',
+      status TEXT NOT NULL DEFAULT 'NEW',
+      total_amount INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      accepted_at TEXT,
+      preparing_at TEXT,
+      ready_at TEXT,
+      picked_up_at TEXT,
+      cancelled_at TEXT,
+      cancelled_by TEXT,
+      vendor_notified_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_vendor_orders_vendor
+      ON vendor_orders (vendor_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_vendor_orders_customer
+      ON vendor_orders (customer_phone, created_at);
+    CREATE INDEX IF NOT EXISTS idx_vendor_orders_status
+      ON vendor_orders (vendor_id, status);
+    CREATE TABLE IF NOT EXISTS vendor_order_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER NOT NULL REFERENCES vendor_orders(id) ON DELETE CASCADE,
+      vendor_product_id INTEGER,
+      product_name_snapshot TEXT NOT NULL,
+      quantity INTEGER NOT NULL,
+      unit_price INTEGER NOT NULL,
+      line_total INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_vendor_order_items_order
+      ON vendor_order_items (order_id);
+    CREATE TABLE IF NOT EXISTS vendor_order_sequences (
+      vendor_id INTEGER PRIMARY KEY,
+      next_number INTEGER NOT NULL
+    );
+  `);
+  ensureColumn(database, 'vendor_orders', 'vendor_notified_at', 'TEXT');
+  applyOrderAheadProductPrices(database);
+}
+
+function applyOrderAheadProductPrices(database: Database.Database): void {
+  const updates: Array<[string, string, string]> = [
+    ['Roti', '25 ct', '$10.00'],
+    ['Methi Paratha', '10 ct', '$10.00'],
+    ['Plain Paratha', '10 ct', '$9.00'],
+  ];
+  const statement = database.prepare(
+    `UPDATE vendor_products
+     SET price = ?, updated_at = datetime('now')
+     WHERE lower(trim(product_name)) = lower(trim(?))
+       AND lower(trim(ifnull(unit, ''))) = lower(trim(?))
+       AND ifnull(price, '') != ?`,
+  );
+  for (const [name, unit, price] of updates) {
+    statement.run(price, name, unit, price);
+  }
 }
 
 export const EVENT_IMAGE_DRAFT_MAX_AGE_MS = 24 * 60 * 60 * 1000;

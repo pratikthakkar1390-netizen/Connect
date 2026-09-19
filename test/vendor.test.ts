@@ -186,6 +186,7 @@ test('incoming normalized text VENDOR routes to the vendor menu', async () => {
     'VENDOR_MY_BUSINESS',
     'VENDOR_PRODUCTS',
     'VENDOR_AVAILABILITY',
+    'VENDOR_ORDERS',
   ]);
   assert.equal(getConversationState(phone)?.state, 'VENDOR_MENU');
 });

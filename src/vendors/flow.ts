@@ -1,4 +1,5 @@
 import type { CommandContext } from '../commands/organizer.js';
+import { normalizePhone } from '../config.js';
 import {
   getConversationState,
   setConversationState,
@@ -34,6 +35,12 @@ import {
   updateVendorProduct,
   type Vendor,
 } from './store.js';
+import {
+  handleCustomerOrderInbound,
+  handleVendorOrderCommand,
+  releasePendingVendorOrderNotifications,
+  setVendorOrderMessageSender,
+} from './orders/flow.js';
 
 type SendFn = (
   params: SendMessageParams,
@@ -42,6 +49,7 @@ let sendVendorMessage: SendFn = sendInboxMessage;
 
 export function setVendorMessageSender(send?: SendFn): void {
   sendVendorMessage = send ?? sendInboxMessage;
+  setVendorOrderMessageSender(send);
 }
 
 export interface VendorDraft {
@@ -219,6 +227,7 @@ function vendorMenuList(): { button: string; sections: InboxListSection[] } {
           { id: 'VENDOR_MY_BUSINESS', title: '📋 My Business' },
           { id: 'VENDOR_PRODUCTS', title: '🛠️ Products' },
           { id: 'VENDOR_AVAILABILITY', title: '📅 Availability' },
+          { id: 'VENDOR_ORDERS', title: '📦 Orders' },
         ],
       },
       {
@@ -545,23 +554,29 @@ export async function handleVendorAccountInbound(
   };
   saveState(
     ctx.phone,
-    getConversationState(ctx.phone, ctx.accountId)?.state ?? 'VENDOR_MENU',
+    getConversationState(ctx.phone, ctx.accountId)?.state ??
+      (normalizePhone(ctx.phone) === normalizePhone(vendor.whatsapp_phone)
+        ? 'VENDOR_MENU'
+        : 'VENDOR_ORDER_MENU'),
     draft,
     ctx.accountId,
   );
 
-  const handled = await handleVendorCommand(ctx);
-  if (handled) {
-    return true;
+  if (normalizePhone(ctx.phone) !== normalizePhone(vendor.whatsapp_phone)) {
+    return handleCustomerOrderInbound(ctx, vendor);
   }
 
-  await sendVendorHome(ctx);
-  saveState(
-    ctx.phone,
-    'VENDOR_MENU',
-    { ...readDraft(ctx.phone, ctx.accountId), vendorId: vendor.id },
-    ctx.accountId,
-  );
+  const handled = await handleVendorCommand(ctx);
+  if (!handled) {
+    await sendVendorHome(ctx);
+    saveState(
+      ctx.phone,
+      'VENDOR_MENU',
+      { ...readDraft(ctx.phone, ctx.accountId), vendorId: vendor.id },
+      ctx.accountId,
+    );
+  }
+  await releasePendingVendorOrderNotifications(vendor);
   return true;
 }
 
@@ -587,6 +602,10 @@ export async function handleVendorCommand(ctx: CommandContext): Promise<boolean>
 
   if (isVendorEntryText(ctx.text) || isVendorEntryText(trimmed)) {
     await sendVendorHome(ctx);
+    return true;
+  }
+
+  if (await handleVendorOrderCommand(ctx)) {
     return true;
   }
 

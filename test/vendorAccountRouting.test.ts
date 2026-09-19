@@ -160,7 +160,7 @@ test('vendor account + Hi enters that vendor automation, not CONNECT Welcome', a
   assert.equal(result.statusCode, 200);
   assert.deepEqual(result.body, { ok: true, route: 'vendor_account' });
   assert.equal(sent.length, 1);
-  assert.match(sent[0].message, /CONNECT Vendor/);
+  assert.match(sent[0].message, /Order Ahead/);
   assert.equal(sent[0].accountId, VENDOR_ACCOUNT);
   assert.equal(sent[0].conversationId, 'conv-vendor-hi');
   assert.doesNotMatch(sent[0].message, /Welcome to CONNECT/);
@@ -190,7 +190,7 @@ test('vendor account + vendor command uses the mapped vendorId', async () => {
 
   assert.equal(result.statusCode, 200);
   assert.deepEqual(result.body, { ok: true, route: 'vendor_account' });
-  assert.match(sent.at(-1)?.message ?? '', /Roti House/);
+  assert.match(sent.at(-1)?.message ?? '', /Order Ahead/);
   const draft = JSON.parse(
     getConversationState(PHONE, VENDOR_ACCOUNT)?.vendor_draft ?? '{}',
   ) as { vendorId?: number };
