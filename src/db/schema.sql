@@ -193,10 +193,6 @@ CREATE TABLE IF NOT EXISTS vendors (
 
 CREATE INDEX IF NOT EXISTS idx_vendors_whatsapp_phone
   ON vendors (whatsapp_phone);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_vendors_zernio_whatsapp_account_id
-  ON vendors (zernio_whatsapp_account_id)
-  WHERE zernio_whatsapp_account_id IS NOT NULL
-    AND trim(zernio_whatsapp_account_id) != '';
 CREATE INDEX IF NOT EXISTS idx_vendors_category ON vendors (category);
 CREATE INDEX IF NOT EXISTS idx_vendors_status ON vendors (status);
 
