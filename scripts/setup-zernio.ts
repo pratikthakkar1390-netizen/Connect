@@ -48,6 +48,17 @@ function main(): void {
   console.log('5. Run: npm run setup:template');
   console.log('6. Deploy server and run: npm run setup:webhook');
   console.log('7. Text HELP to your WhatsApp business number\n');
+  console.log('--- Vendor WhatsApp (separate Zernio profile) ---\n');
+  console.log('Zernio currently allows one WhatsApp number per profile.');
+  console.log('Keep CONNECT on ZERNIO_PROFILE_ID / ZERNIO_WHATSAPP_ACCOUNT_ID.');
+  console.log('Create a second Zernio profile and connect the vendor number there.');
+  console.log(
+    "Copy that profile's WhatsApp account.id onto vendors.zernio_whatsapp_account_id.",
+  );
+  console.log('Do not add a second webhook path. Inbound still uses POST /webhooks/zernio.');
+  console.log(
+    'If that profile needs webhook settings, register the same URL (not a new route).\n',
+  );
 
   if (config.zernioApiKey && config.zernioProfileId) {
     console.log('Connect URL (open in browser):');

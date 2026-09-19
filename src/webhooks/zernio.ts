@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import type { Request, Response } from 'express';
-import { config, isOrganizer } from '../config.js';
+import { config, isConnectWhatsAppAccount, isOrganizer } from '../config.js';
 import { handleOrganizerCommand } from '../commands/organizer.js';
 import { handleCustomerCommand } from '../commands/welcome.js';
 import {
@@ -174,6 +174,33 @@ export async function handleZernioWebhook(
   const interactive = getInteractiveReply(payload);
 
   try {
+    if (!isConnectWhatsAppAccount(accountId)) {
+      const { getVendorByZernioWhatsAppAccountId } = await import(
+        '../vendors/store.js'
+      );
+      const vendor = getVendorByZernioWhatsAppAccountId(accountId);
+      if (!vendor) {
+        res.status(200).json({ ok: true, skipped: 'unknown_whatsapp_account' });
+        return;
+      }
+      const { handleVendorAccountInbound } = await import('../vendors/flow.js');
+      await handleVendorAccountInbound(
+        {
+          phone,
+          text,
+          conversationId,
+          accountId,
+          senderName,
+          interactiveId: interactive.interactiveId,
+          buttonPayload: interactive.buttonPayload,
+          interactiveType: interactive.interactiveType,
+        },
+        vendor,
+      );
+      res.status(200).json({ ok: true, route: 'vendor_account' });
+      return;
+    }
+
     const { handleVendorCommand, shouldHandleVendor } = await import(
       '../vendors/flow.js'
     );
@@ -181,7 +208,7 @@ export async function handleZernioWebhook(
       interactive.interactiveId ||
       interactive.buttonPayload ||
       text;
-    if (shouldHandleVendor(phone, text) || shouldHandleVendor(phone, vendorInput)) {
+    if (shouldHandleVendor(phone, text, accountId) || shouldHandleVendor(phone, vendorInput, accountId)) {
       const handled = await handleVendorCommand({
         phone,
         text,

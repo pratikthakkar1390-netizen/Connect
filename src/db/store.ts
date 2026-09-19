@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   config,
+  connectWhatsAppAccountId,
   isWebGuestPhone,
   normalizePhone,
   parseGuestWhatsAppNumber,
@@ -217,6 +218,7 @@ export interface EventUpdateAckCounts {
 
 export interface ConversationState {
   organizer_phone: string;
+  account_id?: string;
   state: ConversationStep;
   name: string | null;
   date: string | null;
@@ -328,6 +330,7 @@ export function getDb(): Database.Database {
   ensureConnectFollowUpColumns(db);
   ensureEventUpdateTables(db);
   ensureVendorTables(db);
+  ensureConversationAccountScope(db);
   return db;
 }
 
@@ -585,6 +588,144 @@ function tableHasColumn(
   return columns.some((col) => col.name === column);
 }
 
+function sqliteTableSql(
+  database: Database.Database,
+  table: string,
+): string {
+  const row = database
+    .prepare(
+      `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?`,
+    )
+    .get(table) as { sql: string | null } | undefined;
+  return row?.sql ?? '';
+}
+
+/** CONNECT traffic keeps the legacy empty account_id so existing wizard rows still match. */
+export const CONNECT_CONVERSATION_ACCOUNT_ID = '';
+
+function isVendorWhatsAppAccountId(accountId: string): boolean {
+  try {
+    const row = getDb()
+      .prepare(
+        `SELECT 1 FROM vendors WHERE zernio_whatsapp_account_id = ? LIMIT 1`,
+      )
+      .get(accountId);
+    return Boolean(row);
+  } catch {
+    return false;
+  }
+}
+
+export function conversationAccountScope(accountId?: string | null): string {
+  const trimmed = accountId?.trim() ?? '';
+  const connect = connectWhatsAppAccountId();
+  if (!connect || !trimmed || trimmed === connect) {
+    return CONNECT_CONVERSATION_ACCOUNT_ID;
+  }
+  if (isVendorWhatsAppAccountId(trimmed)) {
+    return trimmed;
+  }
+  return CONNECT_CONVERSATION_ACCOUNT_ID;
+}
+
+function ensureConversationAccountScope(database: Database.Database): void {
+  const stateSql = sqliteTableSql(database, 'conversation_states');
+  if (
+    !stateSql.includes('PRIMARY KEY (organizer_phone, account_id)') &&
+    !stateSql.includes('PRIMARY KEY(organizer_phone, account_id)')
+  ) {
+    const hasAccount = tableHasColumn(database, 'conversation_states', 'account_id');
+    database.exec(`
+      CREATE TABLE conversation_states_account_scoped (
+        organizer_phone TEXT NOT NULL,
+        account_id TEXT NOT NULL DEFAULT '',
+        state TEXT NOT NULL,
+        name TEXT,
+        date TEXT,
+        location TEXT,
+        invitation_count INTEGER,
+        rsvp_deadline TEXT,
+        children_allowed INTEGER,
+        reminder_days INTEGER,
+        event_id INTEGER,
+        adult_count INTEGER,
+        child_count INTEGER,
+        invitation_id INTEGER,
+        invite_type TEXT,
+        family_name TEXT,
+        group_name TEXT,
+        max_guests INTEGER,
+        update_message TEXT,
+        theme TEXT,
+        custom_theme TEXT,
+        dress_code TEXT,
+        location_place_id TEXT,
+        location_maps_url TEXT,
+        location_address TEXT,
+        image_filename TEXT,
+        vendor_draft TEXT,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (organizer_phone, account_id)
+      );
+    `);
+    if (hasAccount) {
+      database.exec(`
+        INSERT INTO conversation_states_account_scoped
+        SELECT organizer_phone, COALESCE(account_id, ''), state, name, date, location,
+               invitation_count, rsvp_deadline, children_allowed, reminder_days,
+               event_id, adult_count, child_count, invitation_id, invite_type,
+               family_name, group_name, max_guests, update_message,
+               theme, custom_theme, dress_code,
+               location_place_id, location_maps_url, location_address, image_filename,
+               vendor_draft, updated_at
+        FROM conversation_states
+      `);
+    } else {
+      database.exec(`
+        INSERT INTO conversation_states_account_scoped
+        SELECT organizer_phone, '', state, name, date, location,
+               invitation_count, rsvp_deadline, children_allowed, reminder_days,
+               event_id, adult_count, child_count, invitation_id, invite_type,
+               family_name, group_name, max_guests, update_message,
+               theme, custom_theme, dress_code,
+               location_place_id, location_maps_url, location_address, image_filename,
+               vendor_draft, updated_at
+        FROM conversation_states
+      `);
+    }
+    database.exec(`DROP TABLE conversation_states`);
+    database.exec(
+      `ALTER TABLE conversation_states_account_scoped RENAME TO conversation_states`,
+    );
+  }
+
+  const sessionSql = sqliteTableSql(database, 'message_sessions');
+  if (
+    sessionSql &&
+    !sessionSql.includes('PRIMARY KEY (phone, account_id)') &&
+    !sessionSql.includes('PRIMARY KEY(phone, account_id)')
+  ) {
+    database.exec(`
+      CREATE TABLE message_sessions_account_scoped (
+        phone TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        account_id TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (phone, account_id)
+      );
+    `);
+    database.exec(`
+      INSERT INTO message_sessions_account_scoped
+      SELECT phone, conversation_id, account_id, updated_at
+      FROM message_sessions
+    `);
+    database.exec(`DROP TABLE message_sessions`);
+    database.exec(
+      `ALTER TABLE message_sessions_account_scoped RENAME TO message_sessions`,
+    );
+  }
+}
+
 /** Additive follow-up columns. Existing RSVPed guests / past events are marked sent so deploy does not re-message them. */
 function ensureConnectFollowUpColumns(database: Database.Database): void {
   const hadThankYou = tableHasColumn(database, 'guests', 'thank_you_sent_at');
@@ -811,6 +952,13 @@ export function ensureVendorTables(
     );
   `);
   ensureColumn(database, 'conversation_states', 'vendor_draft', 'TEXT');
+  ensureColumn(database, 'vendors', 'zernio_whatsapp_account_id', 'TEXT');
+  database.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_vendors_zernio_whatsapp_account_id
+      ON vendors (zernio_whatsapp_account_id)
+      WHERE zernio_whatsapp_account_id IS NOT NULL
+        AND trim(zernio_whatsapp_account_id) != ''
+  `);
 }
 
 export const EVENT_IMAGE_DRAFT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -1800,7 +1948,7 @@ export function upsertMessageSession(
     .prepare(
       `INSERT INTO message_sessions (phone, conversation_id, account_id, updated_at)
        VALUES (?, ?, ?, datetime('now'))
-       ON CONFLICT (phone) DO UPDATE SET
+       ON CONFLICT (phone, account_id) DO UPDATE SET
          conversation_id = excluded.conversation_id,
          account_id = excluded.account_id,
          updated_at = datetime('now')`,
@@ -1808,11 +1956,39 @@ export function upsertMessageSession(
     .run(normalizePhone(phone), conversationId, accountId);
 }
 
-export function getMessageSession(phone: string): MessageSession | undefined {
+export function getMessageSession(
+  phone: string,
+  accountId?: string | null,
+): MessageSession | undefined {
   const database = getDb();
+  const normalized = normalizePhone(phone);
+  const requested = accountId?.trim();
+  if (requested) {
+    return database
+      .prepare(
+        `SELECT * FROM message_sessions WHERE phone = ? AND account_id = ?`,
+      )
+      .get(normalized, requested) as MessageSession | undefined;
+  }
+  const connect = connectWhatsAppAccountId();
+  if (connect) {
+    const connectSession = database
+      .prepare(
+        `SELECT * FROM message_sessions WHERE phone = ? AND account_id = ?`,
+      )
+      .get(normalized, connect) as MessageSession | undefined;
+    if (connectSession) {
+      return connectSession;
+    }
+  }
   return database
-    .prepare(`SELECT * FROM message_sessions WHERE phone = ?`)
-    .get(normalizePhone(phone)) as MessageSession | undefined;
+    .prepare(
+      `SELECT * FROM message_sessions
+       WHERE phone = ?
+       ORDER BY updated_at DESC, rowid DESC
+       LIMIT 1`,
+    )
+    .get(normalized) as MessageSession | undefined;
 }
 
 export function listRsvpsForEvent(eventId: number): Rsvp[] {
@@ -1908,24 +2084,36 @@ export function findLatestPendingEventForGuest(phone: string): Event | undefined
 
 export function getConversationState(
   organizerPhone: string,
+  accountId?: string | null,
 ): ConversationState | undefined {
   const database = getDb();
+  const phone = normalizePhone(organizerPhone);
+  const scope = conversationAccountScope(accountId);
   const stmt = database.prepare(`
     SELECT * FROM conversation_states
-    WHERE organizer_phone = ?
+    WHERE organizer_phone = ? AND account_id = ?
   `);
-  return stmt.get(normalizePhone(organizerPhone)) as
-    | ConversationState
-    | undefined;
+  const exact = stmt.get(phone, scope) as ConversationState | undefined;
+  if (exact) {
+    return exact;
+  }
+  if (scope === CONNECT_CONVERSATION_ACCOUNT_ID) {
+    const connect = connectWhatsAppAccountId();
+    if (connect) {
+      return stmt.get(phone, connect) as ConversationState | undefined;
+    }
+  }
+  return undefined;
 }
 
 export function setConversationState(
   organizerPhone: string,
   state: ConversationStep,
   draft: ConversationDraft = {},
+  accountId?: string | null,
 ): ConversationState {
   const database = getDb();
-  const existing = getConversationState(organizerPhone);
+  const existing = getConversationState(organizerPhone, accountId);
   const previousImage = existing?.image_filename ?? null;
   const merged = {
     name: draft.name !== undefined ? draft.name : (existing?.name ?? null),
@@ -2015,7 +2203,7 @@ export function setConversationState(
 
   const stmt = database.prepare(`
     INSERT INTO conversation_states (
-      organizer_phone, state, name, date, location,
+      organizer_phone, account_id, state, name, date, location,
       invitation_count, rsvp_deadline, children_allowed, reminder_days,
       event_id, adult_count, child_count, invitation_id, invite_type,
       family_name, group_name, max_guests, update_message,
@@ -2023,8 +2211,8 @@ export function setConversationState(
       location_place_id, location_maps_url, location_address, image_filename,
       vendor_draft, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-    ON CONFLICT(organizer_phone) DO UPDATE SET
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(organizer_phone, account_id) DO UPDATE SET
       state = excluded.state,
       name = excluded.name,
       date = excluded.date,
@@ -2055,6 +2243,7 @@ export function setConversationState(
   `);
   const saved = stmt.get(
     normalizePhone(organizerPhone),
+    conversationAccountScope(accountId),
     state,
     merged.name,
     merged.date,
@@ -2091,12 +2280,31 @@ export function setConversationState(
   return saved;
 }
 
-export function clearConversationState(organizerPhone: string): void {
+export function clearConversationState(
+  organizerPhone: string,
+  accountId?: string | null,
+): void {
   const database = getDb();
-  const existing = getConversationState(organizerPhone);
+  const existing = getConversationState(organizerPhone, accountId);
+  const phone = normalizePhone(organizerPhone);
+  const scope = conversationAccountScope(accountId);
   database
-    .prepare('DELETE FROM conversation_states WHERE organizer_phone = ?')
-    .run(normalizePhone(organizerPhone));
+    .prepare(
+      `DELETE FROM conversation_states
+       WHERE organizer_phone = ? AND account_id = ?`,
+    )
+    .run(phone, scope);
+  if (scope === CONNECT_CONVERSATION_ACCOUNT_ID) {
+    const connect = connectWhatsAppAccountId();
+    if (connect) {
+      database
+        .prepare(
+          `DELETE FROM conversation_states
+           WHERE organizer_phone = ? AND account_id = ?`,
+        )
+        .run(phone, connect);
+    }
+  }
   deleteEventImageIfUnreferenced(existing?.image_filename);
 }
 

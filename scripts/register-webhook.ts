@@ -17,6 +17,9 @@ async function main(): Promise<void> {
   const zernio = getZernioClient();
 
   console.log(`Registering webhook: ${webhookUrl}`);
+  console.log(
+    'This is the only CONNECT webhook path (POST /webhooks/zernio). Vendor WhatsApp lives on a separate Zernio profile; if that profile needs its own webhook settings, register this same URL there.',
+  );
 
   const { data } = await zernio.webhooks.createWebhookSettings({
     body: {

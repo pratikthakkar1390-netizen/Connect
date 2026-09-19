@@ -125,11 +125,15 @@ export function isVendorCommand(input: string): boolean {
   return compact.startsWith('VENDOR_');
 }
 
-export function shouldHandleVendor(phone: string, input: string): boolean {
+export function shouldHandleVendor(
+  phone: string,
+  input: string,
+  accountId?: string,
+): boolean {
   if (isVendorEntryText(input)) {
     return true;
   }
-  return isVendorConversationState(getConversationState(phone)?.state);
+  return isVendorConversationState(getConversationState(phone, accountId)?.state);
 }
 
 function parseDraft(raw: string | null | undefined): VendorDraft {
@@ -144,12 +148,17 @@ function parseDraft(raw: string | null | undefined): VendorDraft {
   }
 }
 
-function readDraft(phone: string): VendorDraft {
-  return parseDraft(getConversationState(phone)?.vendor_draft);
+function readDraft(phone: string, accountId?: string): VendorDraft {
+  return parseDraft(getConversationState(phone, accountId)?.vendor_draft);
 }
 
-function saveState(phone: string, state: ConversationStep, draft: VendorDraft): void {
-  setConversationState(phone, state, { vendor_draft: JSON.stringify(draft) });
+function saveState(
+  phone: string,
+  state: ConversationStep,
+  draft: VendorDraft,
+  accountId?: string,
+): void {
+  setConversationState(phone, state, { vendor_draft: JSON.stringify(draft) }, accountId);
 }
 
 async function reply(
@@ -229,7 +238,7 @@ async function sendVendorHome(ctx: CommandContext): Promise<boolean> {
   if (!sent) {
     return false;
   }
-  saveState(ctx.phone, 'VENDOR_MENU', readDraft(ctx.phone));
+  saveState(ctx.phone, 'VENDOR_MENU', readDraft(ctx.phone, ctx.accountId), ctx.accountId);
   return true;
 }
 
@@ -243,7 +252,7 @@ async function sendComingSoon(ctx: CommandContext): Promise<boolean> {
   if (!sent) {
     return false;
   }
-  saveState(ctx.phone, 'VENDOR_MENU', readDraft(ctx.phone));
+  saveState(ctx.phone, 'VENDOR_MENU', readDraft(ctx.phone, ctx.accountId), ctx.accountId);
   return true;
 }
 
@@ -319,14 +328,22 @@ function productReviewMessage(draft: VendorDraft): string {
   ].join('\n');
 }
 
+function vendorForContext(ctx: CommandContext): Vendor | undefined {
+  const draft = readDraft(ctx.phone, ctx.accountId);
+  return (
+    (draft.vendorId ? getVendorById(draft.vendorId) : undefined) ??
+    getVendorByWhatsAppPhone(ctx.phone)
+  );
+}
+
 async function requireRegisteredVendor(ctx: CommandContext): Promise<Vendor | null> {
-  const vendor = getVendorByWhatsAppPhone(ctx.phone);
+  const vendor = vendorForContext(ctx);
   if (!vendor) {
     const sent = await reply(ctx, "You haven't registered your business yet.", [
       { title: '📝 Register', payload: 'VENDOR_REGISTER' },
     ]);
     if (sent) {
-      saveState(ctx.phone, 'VENDOR_MENU', {});
+      saveState(ctx.phone, 'VENDOR_MENU', {}, ctx.accountId);
     }
     return null;
   }
@@ -376,9 +393,9 @@ function persistDraftVendor(phone: string, draft: VendorDraft): Vendor {
 }
 
 async function showRegistrationReview(ctx: CommandContext): Promise<void> {
-  const draft = readDraft(ctx.phone);
+  const draft = readDraft(ctx.phone, ctx.accountId);
   const vendor = persistDraftVendor(ctx.phone, draft);
-  saveState(ctx.phone, 'VENDOR_REG_REVIEW', { ...draft, vendorId: vendor.id });
+  saveState(ctx.phone, 'VENDOR_REG_REVIEW', { ...draft, vendorId: vendor.id }, ctx.accountId);
   await reply(ctx, reviewMessage(vendor), [
     { title: '✅ Submit', payload: 'VENDOR_SUBMIT' },
     { title: '✏️ Edit', payload: 'VENDOR_EDIT' },
@@ -399,7 +416,7 @@ async function startRegistration(ctx: CommandContext): Promise<void> {
       { title: '❌ Cancel', payload: 'VENDOR_CANCEL' },
     ]);
     if (sentReview) {
-      saveState(ctx.phone, 'VENDOR_REG_REVIEW', { vendorId: existing.id });
+      saveState(ctx.phone, 'VENDOR_REG_REVIEW', { vendorId: existing.id }, ctx.accountId);
     }
     return;
   }
@@ -418,16 +435,16 @@ async function startRegistration(ctx: CommandContext): Promise<void> {
   if (!sent) {
     return;
   }
-  saveState(ctx.phone, 'VENDOR_REG_CATEGORY', { vendorId: existing?.id });
+  saveState(ctx.phone, 'VENDOR_REG_CATEGORY', { vendorId: existing?.id }, ctx.accountId);
 }
 
 async function showMyBusiness(ctx: CommandContext): Promise<void> {
-  const vendor = getVendorByWhatsAppPhone(ctx.phone);
+  const vendor = vendorForContext(ctx);
   if (!vendor) {
     await requireRegisteredVendor(ctx);
     return;
   }
-  saveState(ctx.phone, 'VENDOR_MENU', { vendorId: vendor.id });
+  saveState(ctx.phone, 'VENDOR_MENU', { vendorId: vendor.id }, ctx.accountId);
   await reply(ctx, myBusinessMessage(vendor), [
     { title: '🛠️ Products', payload: 'VENDOR_PRODUCTS' },
     { title: '📅 Availability', payload: 'VENDOR_AVAILABILITY' },
@@ -441,7 +458,7 @@ async function showProducts(ctx: CommandContext): Promise<void> {
     return;
   }
   const products = getVendorProducts(vendor.id);
-  saveState(ctx.phone, 'VENDOR_PRODUCTS', { vendorId: vendor.id });
+  saveState(ctx.phone, 'VENDOR_PRODUCTS', { vendorId: vendor.id }, ctx.accountId);
   const rows = products.slice(0, 9).map((product) => ({
     id: `VENDOR_PROD:${product.id}`,
     title: product.product_name.slice(0, 24),
@@ -464,7 +481,7 @@ async function showStarterProducts(ctx: CommandContext, vendor: Vendor): Promise
     vendor.category === 'INDIAN_BAKERY'
       ? '🎂 Indian Bakery Products'
       : '🍽️ Catering Products';
-  saveState(ctx.phone, 'VENDOR_PRODUCT_STARTER', { vendorId: vendor.id });
+  saveState(ctx.phone, 'VENDOR_PRODUCT_STARTER', { vendorId: vendor.id }, ctx.accountId);
   await reply(ctx, title, undefined, {
     button: 'Choose',
     sections: [
@@ -485,7 +502,7 @@ async function showAvailability(ctx: CommandContext): Promise<void> {
     return;
   }
   const current = getVendorAvailability(vendor.id);
-  saveState(ctx.phone, 'VENDOR_AVAILABILITY', { vendorId: vendor.id });
+  saveState(ctx.phone, 'VENDOR_AVAILABILITY', { vendorId: vendor.id }, ctx.accountId);
   await reply(
     ctx,
     [
@@ -503,7 +520,7 @@ async function showEditBusinessMenu(ctx: CommandContext): Promise<void> {
   if (!vendor) {
     return;
   }
-  saveState(ctx.phone, 'VENDOR_EDIT_MENU', { vendorId: vendor.id });
+  saveState(ctx.phone, 'VENDOR_EDIT_MENU', { vendorId: vendor.id }, ctx.accountId);
   await reply(ctx, '✏️ Edit\n\nWhat would you like to change?', undefined, {
     button: 'Edit',
     sections: [
@@ -518,13 +535,43 @@ async function showEditBusinessMenu(ctx: CommandContext): Promise<void> {
   });
 }
 
+export async function handleVendorAccountInbound(
+  ctx: CommandContext,
+  vendor: Vendor,
+): Promise<boolean> {
+  const draft = {
+    ...readDraft(ctx.phone, ctx.accountId),
+    vendorId: vendor.id,
+  };
+  saveState(
+    ctx.phone,
+    getConversationState(ctx.phone, ctx.accountId)?.state ?? 'VENDOR_MENU',
+    draft,
+    ctx.accountId,
+  );
+
+  const handled = await handleVendorCommand(ctx);
+  if (handled) {
+    return true;
+  }
+
+  await sendVendorHome(ctx);
+  saveState(
+    ctx.phone,
+    'VENDOR_MENU',
+    { ...readDraft(ctx.phone, ctx.accountId), vendorId: vendor.id },
+    ctx.accountId,
+  );
+  return true;
+}
+
 export async function handleVendorCommand(ctx: CommandContext): Promise<boolean> {
   const input = interactiveCommandInput(ctx);
   const trimmed = input.trim();
   const upper = trimmed.toUpperCase();
   const compact = upper.replace(/\s+/g, '_');
-  const state = getConversationState(ctx.phone);
-  const draft = readDraft(ctx.phone);
+  const state = getConversationState(ctx.phone, ctx.accountId);
+  const draft = readDraft(ctx.phone, ctx.accountId);
   const isInteractive =
     ctx.interactiveType === 'button_reply' ||
     ctx.interactiveType === 'list_reply' ||
@@ -589,7 +636,7 @@ export async function handleVendorCommand(ctx: CommandContext): Promise<boolean>
     return true;
   }
   if (compact === 'VENDOR_CANCEL') {
-    saveState(ctx.phone, 'VENDOR_MENU', {});
+    saveState(ctx.phone, 'VENDOR_MENU', {}, ctx.accountId);
     await sendVendorHome(ctx);
     return true;
   }
@@ -602,7 +649,7 @@ export async function handleVendorCommand(ctx: CommandContext): Promise<boolean>
       return true;
     }
     const vendor = persistDraftVendor(ctx.phone, next);
-    saveState(ctx.phone, 'VENDOR_REG_NAME', { ...next, vendorId: vendor.id });
+    saveState(ctx.phone, 'VENDOR_REG_NAME', { ...next, vendorId: vendor.id }, ctx.accountId);
     return true;
   }
   if (compact === 'VENDOR_SUBMIT') {
@@ -616,7 +663,7 @@ export async function handleVendorCommand(ctx: CommandContext): Promise<boolean>
       ]);
       return true;
     }
-    saveState(ctx.phone, 'VENDOR_MENU', { vendorId: submitted.id });
+    saveState(ctx.phone, 'VENDOR_MENU', { vendorId: submitted.id }, ctx.accountId);
     await reply(
       ctx,
       [
@@ -644,7 +691,7 @@ export async function handleVendorCommand(ctx: CommandContext): Promise<boolean>
       await showEditBusinessMenu(ctx);
       return true;
     }
-    saveState(ctx.phone, 'VENDOR_EDIT_VALUE', { ...draft, editField: field.key });
+    saveState(ctx.phone, 'VENDOR_EDIT_VALUE', { ...draft, editField: field.key }, ctx.accountId);
     await reply(ctx, field.prompt);
     return true;
   }
@@ -668,7 +715,7 @@ export async function handleVendorCommand(ctx: CommandContext): Promise<boolean>
       vendorId: vendor.id,
       productStarterKey: key,
       productName,
-    });
+    }, ctx.accountId);
     await reply(
       ctx,
       `Suggested name: ${productName}\n\nSend the product name to continue.`,
@@ -678,7 +725,7 @@ export async function handleVendorCommand(ctx: CommandContext): Promise<boolean>
   if (compact.startsWith('VENDOR_PROD:')) {
     const id = Number(trimmed.slice('VENDOR_PROD:'.length));
     const product = Number.isInteger(id) ? getVendorProductById(id) : undefined;
-    const vendor = getVendorByWhatsAppPhone(ctx.phone);
+    const vendor = vendorForContext(ctx);
     if (!product || !vendor || product.vendor_id !== vendor.id) {
       await showProducts(ctx);
       return true;
@@ -690,7 +737,7 @@ export async function handleVendorCommand(ctx: CommandContext): Promise<boolean>
       productDescription: product.description ?? '',
       productPrice: product.price ?? '',
       productUnit: product.unit ?? '',
-    });
+    }, ctx.accountId);
     await reply(
       ctx,
       [
@@ -713,7 +760,7 @@ export async function handleVendorCommand(ctx: CommandContext): Promise<boolean>
     if (!vendor) {
       return true;
     }
-    const current = readDraft(ctx.phone);
+    const current = readDraft(ctx.phone, ctx.accountId);
     if (!current.productName?.trim()) {
       await showProducts(ctx);
       return true;
@@ -760,14 +807,14 @@ export async function handleVendorCommand(ctx: CommandContext): Promise<boolean>
       await showProducts(ctx);
       return true;
     }
-    saveState(ctx.phone, 'VENDOR_PRODUCT_EDIT_VALUE', { ...draft, editField: field.key });
+    saveState(ctx.phone, 'VENDOR_PRODUCT_EDIT_VALUE', { ...draft, editField: field.key }, ctx.accountId);
     await reply(ctx, field.prompt);
     return true;
   }
   if (compact === 'VENDOR_REMOVE_PRODUCT') {
-    const current = readDraft(ctx.phone);
+    const current = readDraft(ctx.phone, ctx.accountId);
     if (current.productId) {
-      const vendor = getVendorByWhatsAppPhone(ctx.phone);
+      const vendor = vendorForContext(ctx);
       const product = getVendorProductById(current.productId);
       if (vendor && product && product.vendor_id === vendor.id) {
         removeVendorProduct(product.id);
@@ -781,7 +828,7 @@ export async function handleVendorCommand(ctx: CommandContext): Promise<boolean>
     if (!vendor) {
       return true;
     }
-    saveState(ctx.phone, 'VENDOR_AVAILABILITY_EDIT', { vendorId: vendor.id });
+    saveState(ctx.phone, 'VENDOR_AVAILABILITY_EDIT', { vendorId: vendor.id }, ctx.accountId);
     await reply(
       ctx,
       'Please describe your availability.\n\nExample:\n"Monday-Friday, 9 AM-6 PM. Weekends by appointment."',
@@ -796,14 +843,14 @@ export async function handleVendorCommand(ctx: CommandContext): Promise<boolean>
     case 'VENDOR_REG_NAME': {
       const next = { ...draft, businessName: trimmed };
       persistDraftVendor(ctx.phone, next);
-      saveState(ctx.phone, 'VENDOR_REG_CONTACT', next);
+      saveState(ctx.phone, 'VENDOR_REG_CONTACT', next, ctx.accountId);
       await reply(ctx, 'Who is the contact person?');
       return true;
     }
     case 'VENDOR_REG_CONTACT': {
       const next = { ...draft, contactName: trimmed };
       persistDraftVendor(ctx.phone, next);
-      saveState(ctx.phone, 'VENDOR_REG_EMAIL', next);
+      saveState(ctx.phone, 'VENDOR_REG_EMAIL', next, ctx.accountId);
       await reply(ctx, 'What is the business email?');
       return true;
     }
@@ -814,28 +861,28 @@ export async function handleVendorCommand(ctx: CommandContext): Promise<boolean>
       }
       const next = { ...draft, email: trimmed };
       persistDraftVendor(ctx.phone, next);
-      saveState(ctx.phone, 'VENDOR_REG_ADDRESS', next);
+      saveState(ctx.phone, 'VENDOR_REG_ADDRESS', next, ctx.accountId);
       await reply(ctx, 'What is the business address?');
       return true;
     }
     case 'VENDOR_REG_ADDRESS': {
       const next = { ...draft, address: trimmed };
       persistDraftVendor(ctx.phone, next);
-      saveState(ctx.phone, 'VENDOR_REG_AREA', next);
+      saveState(ctx.phone, 'VENDOR_REG_AREA', next, ctx.accountId);
       await reply(ctx, 'What is your service area?');
       return true;
     }
     case 'VENDOR_REG_AREA': {
       const next = { ...draft, serviceArea: trimmed };
       persistDraftVendor(ctx.phone, next);
-      saveState(ctx.phone, 'VENDOR_REG_DESCRIPTION', next);
+      saveState(ctx.phone, 'VENDOR_REG_DESCRIPTION', next, ctx.accountId);
       await reply(ctx, 'Describe your business.');
       return true;
     }
     case 'VENDOR_REG_DESCRIPTION': {
       const next = { ...draft, description: trimmed };
       persistDraftVendor(ctx.phone, next);
-      saveState(ctx.phone, 'VENDOR_REG_PRICING', next);
+      saveState(ctx.phone, 'VENDOR_REG_PRICING', next, ctx.accountId);
       await reply(ctx, 'Share your pricing information.');
       return true;
     }
@@ -881,23 +928,23 @@ export async function handleVendorCommand(ctx: CommandContext): Promise<boolean>
       saveState(ctx.phone, 'VENDOR_PRODUCT_DESCRIPTION', {
         ...draft,
         productName: trimmed,
-      });
+      }, ctx.accountId);
       await reply(ctx, 'Enter a description.\nExample: Fresh Indian roti');
       return true;
     }
     case 'VENDOR_PRODUCT_DESCRIPTION': {
-      saveState(ctx.phone, 'VENDOR_PRODUCT_PRICE', { ...draft, productDescription: trimmed });
+      saveState(ctx.phone, 'VENDOR_PRODUCT_PRICE', { ...draft, productDescription: trimmed }, ctx.accountId);
       await reply(ctx, 'What is the price?\nExample: $24');
       return true;
     }
     case 'VENDOR_PRODUCT_PRICE': {
-      saveState(ctx.phone, 'VENDOR_PRODUCT_UNIT', { ...draft, productPrice: trimmed });
+      saveState(ctx.phone, 'VENDOR_PRODUCT_UNIT', { ...draft, productPrice: trimmed }, ctx.accountId);
       await reply(ctx, 'What is the unit?\nExample: dozen');
       return true;
     }
     case 'VENDOR_PRODUCT_UNIT': {
       const next = { ...draft, productUnit: trimmed };
-      saveState(ctx.phone, 'VENDOR_PRODUCT_REVIEW', next);
+      saveState(ctx.phone, 'VENDOR_PRODUCT_REVIEW', next, ctx.accountId);
       await reply(ctx, productReviewMessage(next), [
         { title: '✅ Save', payload: 'VENDOR_SAVE_PRODUCT' },
         { title: '✏️ Edit', payload: 'VENDOR_EDIT_PRODUCT' },
@@ -929,7 +976,7 @@ export async function handleVendorCommand(ctx: CommandContext): Promise<boolean>
         await showProducts(ctx);
         return true;
       }
-      saveState(ctx.phone, 'VENDOR_PRODUCT_REVIEW', next);
+      saveState(ctx.phone, 'VENDOR_PRODUCT_REVIEW', next, ctx.accountId);
       await reply(ctx, productReviewMessage(next), [
         { title: '✅ Save', payload: 'VENDOR_SAVE_PRODUCT' },
         { title: '✏️ Edit', payload: 'VENDOR_EDIT_PRODUCT' },

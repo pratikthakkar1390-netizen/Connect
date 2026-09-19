@@ -135,6 +135,21 @@ function nonemptyEnv(value: string | undefined): string | undefined {
   return trimmed || undefined;
 }
 
+/** Live CONNECT WhatsApp account id; prefers process.env so tests can override. */
+export function connectWhatsAppAccountId(): string | undefined {
+  return nonemptyEnv(process.env.ZERNIO_WHATSAPP_ACCOUNT_ID) ??
+    nonemptyEnv(config.zernioWhatsappAccountId);
+}
+
+/** True when inbound traffic belongs on the existing CONNECT routing path. */
+export function isConnectWhatsAppAccount(accountId: string): boolean {
+  const connect = connectWhatsAppAccountId();
+  if (!connect) {
+    return true;
+  }
+  return accountId.trim() === connect;
+}
+
 export function assertConfigForRuntime(): void {
   required('ZERNIO_API_KEY');
   required('ZERNIO_PROFILE_ID');

@@ -12,6 +12,7 @@ export type { VendorCategory, VendorStatus };
 export interface Vendor {
   id: number;
   whatsapp_phone: string;
+  zernio_whatsapp_account_id?: string | null;
   business_name: string | null;
   category: VendorCategory | null;
   contact_name: string | null;
@@ -65,6 +66,35 @@ export function getVendorByWhatsAppPhone(phone: string): Vendor | undefined {
   return getDb()
     .prepare(`SELECT * FROM vendors WHERE whatsapp_phone = ? LIMIT 1`)
     .get(normalizePhone(phone)) as Vendor | undefined;
+}
+
+export function getVendorByZernioWhatsAppAccountId(
+  accountId: string,
+): Vendor | undefined {
+  const trimmed = accountId.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  return getDb()
+    .prepare(
+      `SELECT * FROM vendors WHERE zernio_whatsapp_account_id = ? LIMIT 1`,
+    )
+    .get(trimmed) as Vendor | undefined;
+}
+
+export function setVendorZernioWhatsAppAccountId(
+  vendorId: number,
+  accountId: string | null,
+): Vendor | undefined {
+  const value = accountId?.trim() || null;
+  return getDb()
+    .prepare(
+      `UPDATE vendors
+       SET zernio_whatsapp_account_id = ?, updated_at = datetime('now')
+       WHERE id = ?
+       RETURNING *`,
+    )
+    .get(value, vendorId) as Vendor | undefined;
 }
 
 export function getVendorById(id: number): Vendor | undefined {

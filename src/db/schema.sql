@@ -88,7 +88,8 @@ CREATE TABLE IF NOT EXISTS webhook_events (
 );
 
 CREATE TABLE IF NOT EXISTS conversation_states (
-  organizer_phone TEXT PRIMARY KEY,
+  organizer_phone TEXT NOT NULL,
+  account_id TEXT NOT NULL DEFAULT '',
   state TEXT NOT NULL,
   name TEXT,
   date TEXT,
@@ -114,7 +115,8 @@ CREATE TABLE IF NOT EXISTS conversation_states (
   location_address TEXT,
   image_filename TEXT,
   vendor_draft TEXT,
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (organizer_phone, account_id)
 );
 
 CREATE TABLE IF NOT EXISTS event_updates (
@@ -156,10 +158,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_event_update_recipients_update_phone
   ON event_update_recipients (update_id, phone);
 
 CREATE TABLE IF NOT EXISTS message_sessions (
-  phone TEXT PRIMARY KEY,
+  phone TEXT NOT NULL,
   conversation_id TEXT NOT NULL,
   account_id TEXT NOT NULL,
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (phone, account_id)
 );
 
 CREATE TABLE IF NOT EXISTS event_when_codes (
@@ -183,12 +186,17 @@ CREATE TABLE IF NOT EXISTS vendors (
   description TEXT,
   pricing TEXT,
   status TEXT NOT NULL DEFAULT 'DRAFT',
+  zernio_whatsapp_account_id TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_vendors_whatsapp_phone
   ON vendors (whatsapp_phone);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_vendors_zernio_whatsapp_account_id
+  ON vendors (zernio_whatsapp_account_id)
+  WHERE zernio_whatsapp_account_id IS NOT NULL
+    AND trim(zernio_whatsapp_account_id) != '';
 CREATE INDEX IF NOT EXISTS idx_vendors_category ON vendors (category);
 CREATE INDEX IF NOT EXISTS idx_vendors_status ON vendors (status);
 
