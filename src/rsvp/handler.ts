@@ -259,7 +259,7 @@ async function handleRsvpLink(
     return cancelled;
   }
 
-  if (isRsvpDeadlinePassed(event.rsvp_deadline, { eventDate: event.date })) {
+  if (isRsvpDeadlinePassed(event.rsvp_deadline, { eventDate: event.date, timezone: event.timezone ?? undefined })) {
     await sendRsvpMessage({
       conversationId: ctx.conversationId,
       accountId: ctx.accountId,
@@ -280,6 +280,7 @@ async function handleRsvpLink(
     eventName: event.name,
     eventDate: event.date,
     eventLocation: event.location,
+    eventTimezone: event.timezone,
   });
 
   return 'rsvp_prompt';
@@ -306,7 +307,7 @@ async function continueGuestCountFlow(
     return cancelled;
   }
 
-  if (isRsvpDeadlinePassed(event.rsvp_deadline, { eventDate: event.date })) {
+  if (isRsvpDeadlinePassed(event.rsvp_deadline, { eventDate: event.date, timezone: event.timezone ?? undefined })) {
     clearConversationState(ctx.phone);
     await sendRsvpMessage({
       conversationId: ctx.conversationId,
@@ -440,7 +441,7 @@ async function recordYesAttendance(
   await sendRsvpConfirmation(
     ctx,
     event,
-    formatConfirmation(event.name, event.date, 'yes', total, adults, children),
+    formatConfirmation(event.name, event.date, 'yes', total, adults, children, event.timezone),
   );
   return 'rsvp_recorded';
 }
@@ -498,6 +499,9 @@ async function handleImmediateRsvp(
     event.date,
     parsed.status,
     0,
+    undefined,
+    undefined,
+    event.timezone,
   );
 
   await sendRsvpConfirmation(ctx, event, confirmation);
@@ -562,7 +566,7 @@ export async function handleGuestRsvp(ctx: RsvpMessageContext): Promise<string |
     return cancelled;
   }
 
-  if (isRsvpDeadlinePassed(event.rsvp_deadline, { eventDate: event.date })) {
+  if (isRsvpDeadlinePassed(event.rsvp_deadline, { eventDate: event.date, timezone: event.timezone ?? undefined })) {
     await sendRsvpMessage({
       conversationId: ctx.conversationId,
       accountId: ctx.accountId,

@@ -254,9 +254,9 @@ test('typed CREATE during name step is used as the event name', async () => {
   setConversationState(PHONE, 'WAITING_FOR_EVENT_NAME');
   const handled = await handleCustomerCommand(ctx('CREATE'));
   assert.equal(handled, true);
-  assert.equal(getConversationState(PHONE)?.state, 'WAITING_FOR_EVENT_DATE');
+  assert.equal(getConversationState(PHONE)?.state, 'WAITING_FOR_EVENT_TIMEZONE');
   assert.equal(getConversationState(PHONE)?.name, 'CREATE');
-  assert.match(lastMessage().message, /When is \*CREATE\*/);
+  assert.match(lastMessage().message, /What timezone is this event in/);
 });
 
 test('My Events overflow no longer tells people to type STATUS EventName', () => {

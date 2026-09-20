@@ -2,19 +2,31 @@ import {
   clearConversationState,
   createEvent,
   getConversationState,
+  getEventById,
+  getMessageSession,
   setConversationState,
+  updateEventDetails,
   type ConversationState,
 } from '../db/store.js';
 import { isReminderSendingEnabled } from '../config.js';
 import {
   customRsvpDeadlineRange,
+  formatEventTimezoneLine,
   getEventInstantMs,
   isDateOnlyFormatted,
   parseEventDate,
   parseEventTime,
   parseRsvpDeadline,
+  resolveEventTimezone,
   rsvpDeadlineWeeksBefore,
 } from '../dates/eventDate.js';
+import { eventTimezonePickerUrl } from '../http/eventTimezoneToken.js';
+import {
+  parseQuickTimezoneId,
+  TIMEZONE_QUICK_SELECT,
+  formatTimezoneLabel,
+  isValidIanaTimeZone,
+} from '../timezones/catalog.js';
 import { parseReminderDaysChoice } from '../reminders/targeting.js';
 import {
   CUSTOM_THEME_PROMPT,
@@ -48,6 +60,11 @@ export const REMINDER_3 = 'REMINDER_3';
 export const REMINDER_NONE = 'REMINDER_NONE';
 
 export const TIME_PROMPT = '📅 What time should the event start?';
+export const TIMEZONE_PROMPT = `🌎 What timezone is this event in?
+
+Use the local time where the event happens.
+If you're traveling, pick the event's city, not where you are now.`;
+export const TIMEZONE_LIST_BUTTON = 'Timezone';
 export const MERIDIEM_PROMPT =
   '⏰ What time should the event start? Please include AM or PM, for example 7:30 PM.';
 export const SPECIFIC_TIME_PROMPT =
@@ -118,14 +135,47 @@ export function reminderChoiceList(): NonNullable<SendMessageParams['list']> {
   };
 }
 
+export function timezoneChoiceList(): NonNullable<SendMessageParams['list']> {
+  return {
+    button: TIMEZONE_LIST_BUTTON,
+    sections: [
+      {
+        title: 'Timezone',
+        rows: TIMEZONE_QUICK_SELECT.map((row) => ({
+          id: row.id,
+          title: row.title,
+        })),
+      },
+    ],
+  };
+}
+
+function flowTimezone(state?: { timezone?: string | null } | null): string {
+  return resolveEventTimezone(state?.timezone);
+}
+
+/** New-event persist gate: only a valid conversation IANA timezone qualifies. */
+export function explicitConversationTimezone(
+  timezone?: string | null,
+): string | null {
+  const trimmed = timezone?.trim() ?? '';
+  if (!trimmed || !isValidIanaTimeZone(trimmed)) {
+    return null;
+  }
+  return trimmed;
+}
+
 export function rsvpDeadlineChoiceList(
   eventDate?: string | null,
+  timezone?: string | null,
 ): NonNullable<SendMessageParams['list']> {
   const rows: Array<{ id: string; title: string; description?: string }> = [];
   const date = eventDate?.trim() ?? '';
   if (date) {
     for (const preset of RSVP_DEADLINE_PRESETS) {
-      const computed = rsvpDeadlineWeeksBefore(date, preset.weeks);
+      const computed = rsvpDeadlineWeeksBefore(date, preset.weeks, {
+        timezone: flowTimezone({ timezone }),
+      });
       if (!computed.ok) {
         continue;
       }
@@ -135,7 +185,7 @@ export function rsvpDeadlineChoiceList(
         ...(preset.description ? { description: preset.description } : {}),
       });
     }
-    if (customRsvpDeadlineRange(date)) {
+    if (customRsvpDeadlineRange(date, { timezone: flowTimezone({ timezone }) })) {
       rows.push({ id: DEADLINE_CUSTOM, title: 'Choose a date' });
     }
   }
@@ -246,10 +296,14 @@ export function formatDateQuestion(
   phone: string,
   eventName?: string | null,
   intro?: string,
+  timezone?: string | null,
 ): string {
   const heading =
     intro ?? `When is *${eventName?.trim() || 'your event'}*?`;
-  return `${heading}\n\n📅 Pick a date: ${eventWhenPickerUrl(phone, 'date')}\n\n${DATE_PROMPT}`;
+  const zone = timezone
+    ? `\n\nTimes are in ${formatTimezoneLabel(resolveEventTimezone(timezone))}. Example: 7:00 PM ${formatTimezoneLabel(resolveEventTimezone(timezone))}.`
+    : '';
+  return `${heading}${zone}\n\n📅 Pick a date: ${eventWhenPickerUrl(phone, 'date')}\n\n${DATE_PROMPT}`;
 }
 
 export function formatTimeQuestion(phone: string, base = TIME_PROMPT): string {
@@ -359,6 +413,8 @@ export async function continueCreateEventFlow(
   switch (state.state) {
     case 'WAITING_FOR_EVENT_NAME':
       return handleEventName(ctx, trimmed);
+    case 'WAITING_FOR_EVENT_TIMEZONE':
+      return handleEventTimezone(ctx, state, trimmed);
     case 'WAITING_FOR_EVENT_DATE':
       return handleEventDate(ctx, state, trimmed);
     case 'WAITING_FOR_EVENT_TIME':
@@ -401,14 +457,91 @@ async function handleEventName(
     return true;
   }
 
-  setConversationState(ctx.phone, 'WAITING_FOR_EVENT_DATE', {
+  setConversationState(ctx.phone, 'WAITING_FOR_EVENT_TIMEZONE', {
     name,
     event_id: null,
+    timezone: null,
   });
-  await reply(
-    ctx,
-    formatDateQuestion(ctx.phone, name, `Great name! When is *${name}*?`),
-  );
+  await sendTimezoneQuestion(ctx);
+  return true;
+}
+
+async function sendTimezoneQuestion(ctx: CreateEventContext): Promise<void> {
+  await sendMessage({
+    conversationId: ctx.conversationId,
+    accountId: ctx.accountId,
+    message: TIMEZONE_PROMPT,
+    list: timezoneChoiceList(),
+  });
+}
+
+export async function applyPickedEventTimezone(
+  phone: string,
+  iana: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!isValidIanaTimeZone(iana)) {
+    return { ok: false, error: 'Please choose a city from the list.' };
+  }
+  const existing = getConversationState(phone);
+  const editing =
+    existing?.state === 'WAITING_FOR_EDIT_TIMEZONE' ||
+    (existing?.event_id != null && existing.state.startsWith('WAITING_FOR_EDIT'));
+  if (editing && existing?.event_id != null) {
+    const event = getEventById(existing.event_id);
+    if (event) {
+      updateEventDetails(event.id, {
+        name: event.name,
+        date: event.date,
+        location: event.location,
+        timezone: iana,
+      });
+    }
+  }
+  const nextState = editing ? 'WAITING_FOR_EDIT_FIELD' : 'WAITING_FOR_EVENT_DATE';
+  const saved = setConversationState(phone, nextState, { timezone: iana });
+  const session = getMessageSession(phone);
+  if (session?.conversation_id) {
+    const label = formatTimezoneLabel(iana);
+    const message = editing
+      ? `Timezone set to ${label}. 7:00 PM stays 7:00 PM in ${label}.`
+      : formatDateQuestion(
+          phone,
+          saved.name,
+          `Timezone set to ${label}. When is *${saved.name ?? 'your event'}*?`,
+          iana,
+        );
+    await sendMessage({
+      conversationId: session.conversation_id,
+      accountId: session.account_id,
+      message,
+    });
+  }
+  return { ok: true };
+}
+
+async function handleEventTimezone(
+  ctx: CreateEventContext,
+  _state: ConversationState,
+  input: string,
+): Promise<boolean> {
+  const compact = interactiveCommandInput(ctx).trim();
+  const candidate = compact || input.trim();
+  if (candidate.toUpperCase() === 'TZ_MORE' || candidate.toUpperCase() === 'MORE CITIES') {
+    await reply(
+      ctx,
+      `Search any city worldwide:\n${eventTimezonePickerUrl(ctx.phone)}`,
+    );
+    return true;
+  }
+  const iana = parseQuickTimezoneId(compact) ?? parseQuickTimezoneId(input);
+  if (!iana) {
+    await sendTimezoneQuestion(ctx);
+    return true;
+  }
+  const applied = await applyPickedEventTimezone(ctx.phone, iana);
+  if (!applied.ok) {
+    await sendTimezoneQuestion(ctx);
+  }
   return true;
 }
 
@@ -418,13 +551,13 @@ async function handleEventDate(
   date: string,
 ): Promise<boolean> {
   if (!date) {
-    await reply(ctx, formatDateQuestion(ctx.phone, state.name));
+    await reply(ctx, formatDateQuestion(ctx.phone, state.name, undefined, state.timezone));
     return true;
   }
 
-  const parsed = parseEventDate(date);
+  const parsed = parseEventDate(date, { timezone: flowTimezone(state) });
   if (!parsed.ok) {
-    await reply(ctx, dateParseFailureMessage(ctx.phone, parsed.reason));
+    await reply(ctx, dateParseFailureMessage(ctx.phone, parsed.reason, state.timezone));
     return true;
   }
 
@@ -465,7 +598,7 @@ async function handleEventTime(
     return true;
   }
 
-  const parsed = parseEventTime(timeInput, dateOnly);
+  const parsed = parseEventTime(timeInput, dateOnly, { timezone: flowTimezone(state) });
   if (!parsed.ok) {
     await reply(ctx, formatTimeQuestion(ctx.phone, timeParseFailureMessage(parsed.reason)));
     return true;
@@ -717,15 +850,22 @@ export function applyAcceptedEventImage(
   const state = setConversationState(phone, 'WAITING_FOR_RSVP_DEADLINE', {
     image_filename: imageFilename,
   });
-  return deadlineQuestion(state.date);
+  return deadlineQuestion(state.date, undefined, state.timezone);
 }
 
-export function deadlineQuestion(eventDate?: string | null, extra?: string): {
+export function deadlineQuestion(
+  eventDate?: string | null,
+  extra?: string,
+  timezone?: string | null,
+): {
   message: string;
   list: SendMessageParams['list'];
 } {
-  const list = rsvpDeadlineChoiceList(eventDate);
-  const tooSoon = !customRsvpDeadlineRange(eventDate ?? '') && extra == null;
+  const list = rsvpDeadlineChoiceList(eventDate, timezone);
+  const tooSoon =
+    !customRsvpDeadlineRange(eventDate ?? '', {
+      timezone: flowTimezone({ timezone }),
+    }) && extra == null;
   const message = extra
     ? `${RSVP_DEADLINE_PROMPT}\n\n${extra}`
     : tooSoon
@@ -762,7 +902,9 @@ async function handleRsvpDeadline(
   }
 
   if (choice && 'weeks' in choice) {
-    const computed = rsvpDeadlineWeeksBefore(state.date ?? '', choice.weeks);
+    const computed = rsvpDeadlineWeeksBefore(state.date ?? '', choice.weeks, {
+      timezone: flowTimezone(state),
+    });
     if (!computed.ok) {
       await sendDeadlineQuestion(
         ctx,
@@ -788,11 +930,16 @@ async function handleRsvpDeadline(
   }
 
   if (isDateOnlyFormatted(state.rsvp_deadline)) {
-    const parsedTime = parseEventTime(input, state.rsvp_deadline ?? '');
+    const parsedTime = parseEventTime(input, state.rsvp_deadline ?? '', {
+      timezone: flowTimezone(state),
+    });
     if (parsedTime.ok) {
-      const eventMs = state.date ? getEventInstantMs(state.date) : null;
+      const eventMs = state.date
+        ? getEventInstantMs(state.date, { timezone: flowTimezone(state) })
+        : null;
       const deadline = parseRsvpDeadline(parsedTime.formatted, {
         eventDate: state.date,
+        timezone: flowTimezone(state),
       });
       if (
         deadline.ok &&
@@ -821,7 +968,10 @@ async function handleRsvpDeadline(
     }
   }
 
-  const parsed = parseRsvpDeadline(input, { eventDate: state.date });
+  const parsed = parseRsvpDeadline(input, {
+    eventDate: state.date,
+    timezone: flowTimezone(state),
+  });
   if (!parsed.ok) {
     await sendDeadlineQuestion(
       ctx,
@@ -833,7 +983,9 @@ async function handleRsvpDeadline(
     return true;
   }
 
-  const eventMs = state.date ? getEventInstantMs(state.date) : null;
+  const eventMs = state.date
+    ? getEventInstantMs(state.date, { timezone: flowTimezone(state) })
+    : null;
   if (eventMs !== null && parsed.instantMs >= eventMs) {
     await sendDeadlineQuestion(ctx, state.date, RSVP_DEADLINE_BEFORE_EVENT);
     return true;
@@ -952,8 +1104,9 @@ async function finishConfirm(
   const name = state.name?.trim() ?? '';
   const date = state.date?.trim() ?? '';
   const location = state.location?.trim() ?? '';
+  const timezone = explicitConversationTimezone(state.timezone);
 
-  if (!name || !date || !location) {
+  if (!name || !date || !location || !timezone) {
     clearConversationState(ctx.phone);
     setConversationState(ctx.phone, 'WAITING_FOR_EVENT_NAME');
     await reply(
@@ -976,12 +1129,13 @@ async function finishConfirm(
     locationPlaceId: state.location_place_id,
     locationMapsUrl: state.location_maps_url,
     locationAddress: state.location_address,
+    timezone,
   });
   clearConversationState(ctx.phone);
 
   await reply(
     ctx,
-    `✅ Event *${event.name}* created!\n\n📅 ${event.date}\n📍 ${event.location}`,
+    `✅ Event *${event.name}* created!\n\n📅 ${event.date}\n${formatEventTimezoneLine(event.timezone)}\n📍 ${event.location}`,
     [
       { title: 'Invite', payload: `START_INVITE ${event.id}` },
       { title: 'View RSVPs', payload: `${VIEW_RSVPS} ${event.id}` },
@@ -1021,12 +1175,14 @@ export function formatReminderDays(days: number | null | undefined): string {
 function dateParseFailureMessage(
   phone: string,
   reason: 'unparseable' | 'ambiguous' | 'missingMeridiem' | 'vagueTime',
+  timezone?: string | null,
 ): string {
   if (reason === 'ambiguous') {
     return formatDateQuestion(
       phone,
       undefined,
       'That date could mean more than one thing. Please reply with a clearer date.',
+      timezone,
     );
   }
   if (reason === 'missingMeridiem') {
@@ -1037,12 +1193,14 @@ function dateParseFailureMessage(
       phone,
       undefined,
       SPECIFIC_TIME_PROMPT,
+      timezone,
     );
   }
   return formatDateQuestion(
     phone,
     undefined,
     "I couldn't understand that date. Please try again.",
+    timezone,
   );
 }
 
@@ -1072,7 +1230,8 @@ async function sendDeadlineQuestion(
   eventDate?: string | null,
   extra?: string,
 ): Promise<void> {
-  const next = deadlineQuestion(eventDate, extra);
+  const timezone = getConversationState(ctx.phone)?.timezone;
+  const next = deadlineQuestion(eventDate, extra, timezone);
   await sendMessage({
     conversationId: ctx.conversationId,
     accountId: ctx.accountId,
@@ -1102,7 +1261,7 @@ export function formatEventConfirmation(state: ConversationState): string {
     ? `\n${state.location_address.trim()}`
     : '';
 
-  return `🎉 Please confirm your event:\n\nEvent: ${state.name}\nDate: ${state.date}\nLocation: ${state.location}${addressLine}${themeLine}${dressLine}${imageLine}\nRSVP deadline: ${deadline}\nChildren: ${formatChildrenPolicy(state.children_allowed)}${reminderLine}`;
+  return `🎉 Please confirm your event:\n\nEvent: ${state.name}\nDate: ${state.date}\n${formatEventTimezoneLine(state.timezone)}\nLocation: ${state.location}${addressLine}${themeLine}${dressLine}${imageLine}\nRSVP deadline: ${deadline}\nChildren: ${formatChildrenPolicy(state.children_allowed)}${reminderLine}`;
 }
 
 function formatThemeLine(state: ConversationState): string {

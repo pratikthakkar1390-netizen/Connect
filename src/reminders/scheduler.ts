@@ -39,7 +39,7 @@ export function shouldSendOrganizerPostEvent(
   if (event.organizer_post_event_sent_at) {
     return false;
   }
-  return isCalendarDayAfterEvent(event.date, nowMs);
+  return isCalendarDayAfterEvent(event.date, nowMs, event.timezone ?? undefined);
 }
 
 export async function runOrganizerPostEventTick(
@@ -104,6 +104,7 @@ async function runRsvpReminderTick(nowMs: number): Promise<void> {
         nowMs,
         deadline: event.rsvp_deadline,
         eventDate: event.date,
+        timezone: event.timezone ?? undefined,
         reminderDays: event.reminder_days,
         reminderSentAt: event.reminder_sent_at,
       })

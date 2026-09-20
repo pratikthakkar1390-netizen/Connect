@@ -30,6 +30,7 @@ import {
   parseEventDate,
   parseEventTime,
   parseRsvpDeadline,
+  resolveEventTimezone,
   todayInEventTimezone,
 } from '../dates/eventDate.js';
 import { sendInboxMessage, type InboxSendResult, type SendMessageParams } from '../zernio/client.js';
@@ -76,6 +77,14 @@ const MONTHS = [
 function formScalar(value: unknown): string {
   const raw = Array.isArray(value) ? value[value.length - 1] : value;
   return typeof raw === 'string' ? raw.trim() : '';
+}
+
+function pickerTimezone(phone: string): string {
+  return resolveEventTimezone(getConversationState(phone)?.timezone);
+}
+
+function tzOpts(phone: string) {
+  return { timezone: pickerTimezone(phone) };
 }
 
 export function isoDateToLongDate(isoDate: string): string | null {
@@ -202,7 +211,7 @@ function renderCurrentStep(
     res.type('html').send(
       renderEventWhenDatePage({
         eventName: state.name,
-        minDate: todayInEventTimezone(),
+        minDate: todayInEventTimezone(tzOpts(phone)),
         dateValue: extras.dateValue,
         error: extras.dateError,
         includeTime: true,
@@ -211,12 +220,12 @@ function renderCurrentStep(
     return;
   }
   if (view === 'deadline') {
-    const range = customRsvpDeadlineRange(state.date ?? '');
+    const range = customRsvpDeadlineRange(state.date ?? '', tzOpts(phone));
     res.type('html').send(
       renderEventWhenDatePage({
         purpose: 'deadline',
         eventName: state.name,
-        minDate: range?.minDate ?? todayInEventTimezone(),
+        minDate: range?.minDate ?? todayInEventTimezone(tzOpts(phone)),
         maxDate: range?.maxDate,
         dateValue: extras.dateValue,
         error: extras.dateError ?? (range ? undefined : RSVP_DEADLINE_BEFORE_EVENT),
@@ -310,7 +319,7 @@ function handleEventWhenPost(req: Request, res: Response): void {
         });
         return;
       }
-      if (isPastCalendarIsoDate(isoDate)) {
+      if (isPastCalendarIsoDate(isoDate, tzOpts(payload.phone))) {
         renderCurrentStep(res, payload.phone, 'deadline', {
           dateError: RSVP_DEADLINE_IN_PAST,
           dateValue: isoDate,
@@ -318,14 +327,14 @@ function handleEventWhenPost(req: Request, res: Response): void {
         return;
       }
       const state = getConversationState(payload.phone);
-      if (!isCustomDeadlineIsoAllowed(isoDate, state?.date ?? '')) {
+      if (!isCustomDeadlineIsoAllowed(isoDate, state?.date ?? '', tzOpts(payload.phone))) {
         renderCurrentStep(res, payload.phone, 'deadline', {
           dateError: RSVP_DEADLINE_BEFORE_EVENT,
           dateValue: isoDate,
         });
         return;
       }
-      const parsed = parseEventDate(longDate);
+      const parsed = parseEventDate(longDate, tzOpts(payload.phone));
       if (!parsed.ok) {
         renderCurrentStep(res, payload.phone, 'deadline', {
           dateError: 'Please choose a date from the calendar.',
@@ -364,14 +373,14 @@ function handleEventWhenPost(req: Request, res: Response): void {
         });
         return;
       }
-      if (isPastCalendarIsoDate(isoDate)) {
+      if (isPastCalendarIsoDate(isoDate, tzOpts(payload.phone))) {
         renderCurrentStep(res, payload.phone, 'date', {
           dateError: 'That date is in the past. Please choose today or a future date.',
           dateValue: isoDate,
         });
         return;
       }
-      const parsed = parseEventDate(longDate);
+      const parsed = parseEventDate(longDate, tzOpts(payload.phone));
       if (!parsed.ok) {
         renderCurrentStep(res, payload.phone, 'date', {
           dateError: 'Please choose a date from the calendar.',
@@ -385,7 +394,11 @@ function handleEventWhenPost(req: Request, res: Response): void {
         formScalar(req.body?.meridiem),
       );
       if (pickedTime) {
-        const withTime = parseEventTime(pickedTime, parsed.formatted);
+        const withTime = parseEventTime(
+          pickedTime,
+          parsed.formatted,
+          tzOpts(payload.phone),
+        );
         if (withTime.ok) {
           await finishEventWhen(res, payload.phone, withTime.formatted);
           return;
@@ -430,7 +443,7 @@ function handleEventWhenPost(req: Request, res: Response): void {
       });
       return;
     }
-    const parsed = parseEventTime(picked, dateOnly);
+    const parsed = parseEventTime(picked, dateOnly, tzOpts(payload.phone));
     if (!parsed.ok) {
       renderCurrentStep(res, payload.phone, 'time', {
         timeError: timeParseFailureMessage(parsed.reason),
@@ -440,8 +453,11 @@ function handleEventWhenPost(req: Request, res: Response): void {
     if (deadlineTime) {
       const deadline = parseRsvpDeadline(parsed.formatted, {
         eventDate: state?.date,
+        timezone: pickerTimezone(payload.phone),
       });
-      const eventMs = state?.date ? getEventInstantMs(state.date) : null;
+      const eventMs = state?.date
+        ? getEventInstantMs(state.date, tzOpts(payload.phone))
+        : null;
       if (!deadline.ok) {
         renderCurrentStep(res, payload.phone, 'time', {
           timeError: RSVP_DEADLINE_BEFORE_EVENT,

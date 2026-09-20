@@ -1,4 +1,5 @@
 import { buildRsvpWhatsAppLink, buildShortRsvpUrl, normalizePhone } from '../config.js';
+import { formatEventTimezoneLine } from '../dates/eventDate.js';
 import { themeLabel } from '../events/theme.js';
 import {
   clearConversationState,
@@ -72,6 +73,7 @@ const GREETINGS = new Set([
 
 const ORGANIZER_WIZARD_STATES = new Set([
   'WAITING_FOR_EVENT_NAME',
+  'WAITING_FOR_EVENT_TIMEZONE',
   'WAITING_FOR_EVENT_DATE',
   'WAITING_FOR_EVENT_TIME',
   'WAITING_FOR_EVENT_LOCATION',
@@ -94,6 +96,7 @@ const ORGANIZER_WIZARD_STATES = new Set([
   'WAITING_FOR_EDIT_NAME',
   'WAITING_FOR_EDIT_DATE',
   'WAITING_FOR_EDIT_TIME',
+  'WAITING_FOR_EDIT_TIMEZONE',
   'WAITING_FOR_EDIT_LOCATION',
   'WAITING_FOR_EDIT_THEME',
   'WAITING_FOR_EDIT_CUSTOM_THEME',
@@ -259,6 +262,7 @@ export function formatEventInviteCard(event: Event): string {
   const lines = [
     `📅 ${event.name}`,
     event.date,
+    formatEventTimezoneLine(event.timezone),
     `📍 ${event.location}`,
   ];
   if (event.cancelled_at) {

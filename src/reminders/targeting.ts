@@ -1,4 +1,4 @@
-import { parseRsvpDeadline } from '../dates/eventDate.js';
+import { parseRsvpDeadline, reminderWindowStartMs } from '../dates/eventDate.js';
 
 export interface ParseDeadlineOptions {
   eventDate?: string | null;
@@ -25,6 +25,7 @@ export interface ReminderDueParams {
   reminderDays: number;
   reminderSentAt: string | null;
   eventDate?: string | null;
+  timezone?: string;
 }
 
 /** Whether an event is inside its one-shot reminder window (pending guests only at send time). */
@@ -34,6 +35,7 @@ export function isReminderDue({
   reminderDays,
   reminderSentAt,
   eventDate,
+  timezone,
 }: ReminderDueParams): boolean {
   if (reminderSentAt) {
     return false;
@@ -45,6 +47,7 @@ export function isReminderDue({
   const deadlineMs = parseDeadlineToMs(deadline, {
     eventDate,
     reference: new Date(nowMs),
+    timezone,
   });
   if (deadlineMs === null) {
     return false;
@@ -55,7 +58,14 @@ export function isReminderDue({
     return false;
   }
 
-  const windowStartMs = deadlineMs - reminderDays * 86_400_000;
+  const windowStartMs = reminderWindowStartMs(deadline, reminderDays, {
+    eventDate,
+    reference: new Date(nowMs),
+    timezone,
+  });
+  if (windowStartMs === null) {
+    return false;
+  }
   return nowMs >= windowStartMs;
 }
 

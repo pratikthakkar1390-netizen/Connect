@@ -75,6 +75,7 @@ test('formatShareRsvpInvitation keeps existing wording and omits forward instruc
       'Summer BBQ',
       '',
       '📅 July 4',
+      '🌎 Eastern Time',
       '📍 Park',
       '',
       '💌 Please RSVP here:',

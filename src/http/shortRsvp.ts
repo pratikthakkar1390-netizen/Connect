@@ -165,7 +165,7 @@ shortRsvpRouter.get('/r/:code', (req, res) => {
     sendCancelled(res, event.name);
     return;
   }
-  if (isRsvpDeadlinePassed(event.rsvp_deadline, { eventDate: event.date })) {
+  if (isRsvpDeadlinePassed(event.rsvp_deadline, { eventDate: event.date, timezone: event.timezone ?? undefined })) {
     sendClosed(res, event.name);
     return;
   }
@@ -194,7 +194,7 @@ shortRsvpRouter.post('/r/:code', (req, res) => {
     sendCancelled(res, event.name);
     return;
   }
-  if (isRsvpDeadlinePassed(event.rsvp_deadline, { eventDate: event.date })) {
+  if (isRsvpDeadlinePassed(event.rsvp_deadline, { eventDate: event.date, timezone: event.timezone ?? undefined })) {
     sendClosed(res, event.name);
     return;
   }

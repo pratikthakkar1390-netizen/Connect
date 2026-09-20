@@ -1,4 +1,5 @@
 import type { Event } from '../db/store.js';
+import { formatEventTimezoneLine } from '../dates/eventDate.js';
 
 export const INVITATION_FORWARD_INSTRUCTION =
   'Forward the invitation above to your guests. Invite more, or tap Done.';
@@ -14,6 +15,7 @@ export function formatShareRsvpInvitation(
     event.name,
     '',
     `📅 ${event.date}`,
+    formatEventTimezoneLine(event.timezone),
   ];
 
   if (event.location?.trim()) {

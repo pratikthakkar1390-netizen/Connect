@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS events (
   location_maps_url TEXT,
   location_address TEXT,
   image_filename TEXT,
+  timezone TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -115,6 +116,7 @@ CREATE TABLE IF NOT EXISTS conversation_states (
   location_address TEXT,
   image_filename TEXT,
   vendor_draft TEXT,
+  timezone TEXT,
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (organizer_phone, account_id)
 );

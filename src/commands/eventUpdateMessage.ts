@@ -1,5 +1,6 @@
 import { buildShortRsvpUrl } from '../config.js';
 import type { Event, EventUpdateAckCounts } from '../db/store.js';
+import { formatEventTimezoneLine } from '../dates/eventDate.js';
 import { themeLabel } from '../events/theme.js';
 
 export function splitEventWhen(date: string): {
@@ -17,12 +18,14 @@ export function formatEventDetailLines(
   name: string,
   date: string,
   location: string,
+  timezone?: string | null,
 ): string {
   const when = splitEventWhen(date);
   const lines = [name, '', `📅 ${when.dateLabel}`];
   if (when.timeLabel) {
     lines.push(`⏰ ${when.timeLabel}`);
   }
+  lines.push(formatEventTimezoneLine(timezone));
   if (location.trim()) {
     lines.push(`📍 ${location.trim()}`);
   }
@@ -48,7 +51,7 @@ export function formatEditedEventReview(event: Event): string {
   return [
     '✅ Event updated!',
     '',
-    formatEventDetailLines(event.name, event.date, event.location),
+    formatEventDetailLines(event.name, event.date, event.location, event.timezone),
     ...(extras.length ? ['', ...extras] : []),
     '',
     'Would you like to notify your guests?',
@@ -82,6 +85,7 @@ export function formatInfoUpdateMessage(
   if (when.timeLabel) {
     lines.push(`⏰ ${when.timeLabel}`);
   }
+  lines.push(formatEventTimezoneLine(event.timezone));
   lines.push(`📍 ${event.location}`, '', 'Please check the latest event details.');
   const link = rsvpLinkForEvent(event);
   if (link) {
@@ -107,6 +111,7 @@ export function formatAckUpdateMessage(
   if (when.timeLabel) {
     lines.push(`⏰ ${when.timeLabel}`);
   }
+  lines.push(formatEventTimezoneLine(event.timezone));
   lines.push(
     `📍 ${event.location}`,
     '',
@@ -130,6 +135,7 @@ export function formatCancelGuestMessage(event: Event): string {
   if (when.timeLabel) {
     lines.push(`⏰ ${when.timeLabel}`);
   }
+  lines.push(formatEventTimezoneLine(event.timezone));
   lines.push(`📍 ${event.location}`);
   return lines.join('\n');
 }
@@ -148,6 +154,7 @@ export function formatGuestAckThankYou(event: Event): string {
   if (when.timeLabel) {
     lines.push(`⏰ ${when.timeLabel}`);
   }
+  lines.push(formatEventTimezoneLine(event.timezone));
   lines.push(`📍 ${event.location}`);
   return lines.join('\n');
 }
@@ -217,7 +224,7 @@ export function formatCancelConfirmation(
 
 export function formatViewEventMessage(event: Event): string {
   const lines = [
-    formatEventDetailLines(event.name, event.date, event.location),
+    formatEventDetailLines(event.name, event.date, event.location, event.timezone),
   ];
   const link = rsvpLinkForEvent(event);
   if (link) {

@@ -38,7 +38,27 @@ import {
   type EventUpdateTarget,
   type EventUpdateType,
 } from '../db/store.js';
-import { parseEventDate, parseEventTime, parseRsvpDeadline, getEventInstantMs, isDateOnlyFormatted, rsvpDeadlineWeeksBefore } from '../dates/eventDate.js';
+import { parseEventDate, parseEventTime, parseRsvpDeadline, getEventInstantMs, isDateOnlyFormatted, rsvpDeadlineWeeksBefore, resolveEventTimezone } from '../dates/eventDate.js';
+import { eventTimezonePickerUrl } from '../http/eventTimezoneToken.js';
+import { parseQuickTimezoneId } from '../timezones/catalog.js';
+import {
+  applyPickedEventTimezone,
+  formatDateQuestion,
+  formatDeadlineQuestion,
+  formatDeadlineTimeQuestion,
+  formatTimeQuestion,
+  MERIDIEM_PROMPT,
+  parseRsvpDeadlineChoice,
+  RSVP_DEADLINE_BEFORE_EVENT,
+  RSVP_DEADLINE_IN_PAST,
+  RSVP_DEADLINE_PROMPT,
+  rsvpDeadlineChoiceList,
+  SPECIFIC_TIME_PROMPT,
+  TIME_PROMPT,
+  TIMEZONE_PROMPT,
+  timezoneChoiceList,
+  EVENT_IMAGE_PROMPT,
+} from './createEventFlow.js';
 import {
   isBroadcastSendSuccessful,
   sendEventNoticeBroadcast,
@@ -60,21 +80,6 @@ import {
   themeLabel,
 } from '../events/theme.js';
 import { locationDraft, type LocationDraft } from '../maps/location.js';
-import {
-  formatDateQuestion,
-  formatDeadlineQuestion,
-  formatDeadlineTimeQuestion,
-  formatTimeQuestion,
-  MERIDIEM_PROMPT,
-  parseRsvpDeadlineChoice,
-  RSVP_DEADLINE_BEFORE_EVENT,
-  RSVP_DEADLINE_IN_PAST,
-  RSVP_DEADLINE_PROMPT,
-  rsvpDeadlineChoiceList,
-  SPECIFIC_TIME_PROMPT,
-  TIME_PROMPT,
-  EVENT_IMAGE_PROMPT,
-} from './createEventFlow.js';
 import { eventImagePickerUrl } from '../http/eventImageToken.js';
 import {
   formatAckUpdateMessage,
@@ -105,6 +110,7 @@ const MANAGE_EVENT = 'MANAGE_EVENT';
 export const EDIT_EVENT = 'EDIT_EVENT';
 export const CHANGE_NAME = 'CHANGE_NAME';
 export const CHANGE_WHEN = 'CHANGE_WHEN';
+export const CHANGE_TIMEZONE = 'CHANGE_TIMEZONE';
 export const CHANGE_LOCATION = 'CHANGE_LOCATION';
 export const CHANGE_THEME = 'CHANGE_THEME';
 export const CHANGE_DRESS = 'CHANGE_DRESS';
@@ -142,6 +148,7 @@ const UPDATE_FLOW_STATES = new Set([
   'WAITING_FOR_EDIT_NAME',
   'WAITING_FOR_EDIT_DATE',
   'WAITING_FOR_EDIT_TIME',
+  'WAITING_FOR_EDIT_TIMEZONE',
   'WAITING_FOR_EDIT_LOCATION',
   'WAITING_FOR_EDIT_THEME',
   'WAITING_FOR_EDIT_CUSTOM_THEME',
@@ -165,11 +172,12 @@ export function formatEditDateQuestion(
   eventName?: string | null,
   currentDate?: string | null,
   intro?: string,
+  timezone?: string | null,
 ): string {
   const current = currentDate?.trim()
     ? `Current date: *${currentDate}*\n\n`
     : '';
-  return `${current}${formatDateQuestion(phone, eventName, intro)}`;
+  return `${current}${formatDateQuestion(phone, eventName, intro, timezone)}`;
 }
 
 export function formatEditTimeQuestion(phone: string, base = TIME_PROMPT): string {
@@ -242,6 +250,7 @@ const EVENT_UPDATE_ACTIONS = [
   EDIT_EVENT,
   CHANGE_NAME,
   CHANGE_WHEN,
+  CHANGE_TIMEZONE,
   CHANGE_LOCATION,
   CHANGE_THEME,
   CHANGE_DRESS,
@@ -564,6 +573,14 @@ export async function handleEventUpdateCommand(
     return promptEditWhen(ctx, event);
   }
 
+  if (hasEventAction(trimmed, CHANGE_TIMEZONE)) {
+    const event = await requireOwnedAction(ctx, trimmed, CHANGE_TIMEZONE);
+    if (!event) {
+      return true;
+    }
+    return promptEditTimezone(ctx, event);
+  }
+
   if (hasEventAction(trimmed, CHANGE_LOCATION)) {
     const event = await requireOwnedAction(ctx, trimmed, CHANGE_LOCATION);
     if (!event) {
@@ -792,6 +809,8 @@ export async function continueEventUpdateFlow(
       return handleEditDate(ctx, state, input);
     case 'WAITING_FOR_EDIT_TIME':
       return handleEditTime(ctx, state, input);
+    case 'WAITING_FOR_EDIT_TIMEZONE':
+      return handleEditTimezone(ctx, state, input);
     case 'WAITING_FOR_EDIT_LOCATION':
       return handleEditLocation(ctx, state, input);
     case 'WAITING_FOR_EDIT_THEME':
@@ -854,6 +873,7 @@ function editEventDraft(event: Event) {
     location_maps_url: event.location_maps_url ?? null,
     location_address: event.location_address ?? null,
     image_filename: event.image_filename ?? null,
+    timezone: event.timezone ?? null,
     update_message: null,
   };
 }
@@ -867,6 +887,7 @@ export function editFieldList(event: Event): NonNullable<SendMessageParams['list
         rows: [
           { id: eventListRowId(CHANGE_NAME, event.id), title: 'Name' },
           { id: eventListRowId(CHANGE_WHEN, event.id), title: 'Date & Time' },
+          { id: eventListRowId(CHANGE_TIMEZONE, event.id), title: 'Timezone' },
           { id: eventListRowId(CHANGE_LOCATION, event.id), title: 'Location' },
           { id: eventListRowId(CHANGE_THEME, event.id), title: 'Event Style' },
           { id: eventListRowId(CHANGE_DRESS, event.id), title: 'What to Wear' },
@@ -922,7 +943,16 @@ async function promptEditWhen(ctx: CommandContext, event: Event): Promise<boolea
     return startEditEvent(ctx, event);
   }
   seedEditField(ctx, event, 'WAITING_FOR_EDIT_DATE');
-  await reply(ctx, formatEditDateQuestion(ctx.phone, event.name, event.date));
+  await reply(ctx, formatEditDateQuestion(ctx.phone, event.name, event.date, undefined, event.timezone));
+  return true;
+}
+
+async function promptEditTimezone(ctx: CommandContext, event: Event): Promise<boolean> {
+  if (isEventCancelled(event)) {
+    return startEditEvent(ctx, event);
+  }
+  seedEditField(ctx, event, 'WAITING_FOR_EDIT_TIMEZONE');
+  await reply(ctx, TIMEZONE_PROMPT, undefined, timezoneChoiceList());
   return true;
 }
 
@@ -1060,17 +1090,47 @@ async function handleEditName(
   return finishEditEvent(ctx, next);
 }
 
+function editTz(state: ConversationState): string {
+  return resolveEventTimezone(state.timezone);
+}
+
+async function handleEditTimezone(
+  ctx: CommandContext,
+  _state: ConversationState,
+  input: string,
+): Promise<boolean> {
+  const compact = interactiveCommandInput(ctx).trim();
+  const candidate = compact || input.trim();
+  if (candidate.toUpperCase() === 'TZ_MORE' || candidate.toUpperCase() === 'MORE CITIES') {
+    await reply(
+      ctx,
+      `Search any city worldwide:\n${eventTimezonePickerUrl(ctx.phone)}`,
+    );
+    return true;
+  }
+  const iana = parseQuickTimezoneId(compact) || parseQuickTimezoneId(input);
+  if (!iana) {
+    await reply(ctx, TIMEZONE_PROMPT, undefined, timezoneChoiceList());
+    return true;
+  }
+  const applied = await applyPickedEventTimezone(ctx.phone, iana);
+  if (!applied.ok) {
+    await reply(ctx, TIMEZONE_PROMPT, undefined, timezoneChoiceList());
+  }
+  return true;
+}
+
 async function handleEditDate(
   ctx: CommandContext,
   state: ConversationState,
   input: string,
 ): Promise<boolean> {
   if (isKeepValue(input) || !input.trim()) {
-    await reply(ctx, formatEditDateQuestion(ctx.phone, state.name, state.date));
+    await reply(ctx, formatEditDateQuestion(ctx.phone, state.name, state.date, undefined, state.timezone));
     return true;
   }
 
-  const parsed = parseEventDate(input);
+  const parsed = parseEventDate(input, { timezone: editTz(state) });
   if (!parsed.ok) {
     await reply(
       ctx,
@@ -1085,6 +1145,7 @@ async function handleEditDate(
             : parsed.reason === 'ambiguous'
               ? 'That date could mean more than one thing. Please reply with a clearer date.'
               : "I couldn't understand that date. Please try again.",
+        state.timezone,
       ),
     );
     return true;
@@ -1124,7 +1185,7 @@ async function handleEditTime(
     return true;
   }
 
-  const parsed = parseEventTime(input, state.date?.trim() ?? '');
+  const parsed = parseEventTime(input, state.date?.trim() ?? '', { timezone: editTz(state) });
   if (!parsed.ok) {
     await reply(
       ctx,
@@ -1305,7 +1366,9 @@ async function handleEditDeadline(
     return finishEditEvent(ctx, next);
   }
   if (choice && 'weeks' in choice) {
-    const computed = rsvpDeadlineWeeksBefore(state.date ?? '', choice.weeks);
+    const computed = rsvpDeadlineWeeksBefore(state.date ?? '', choice.weeks, {
+      timezone: editTz(state),
+    });
     if (!computed.ok) {
       await sendEditDeadlineQuestion(ctx, state.date, RSVP_DEADLINE_BEFORE_EVENT);
       return true;
@@ -1317,11 +1380,14 @@ async function handleEditDeadline(
   }
 
   if (isDateOnlyFormatted(state.rsvp_deadline) && input.trim()) {
-    const parsedTime = parseEventTime(input, state.rsvp_deadline ?? '');
+    const parsedTime = parseEventTime(input, state.rsvp_deadline ?? '', {
+      timezone: editTz(state),
+    });
     if (parsedTime.ok) {
-      const eventMs = state.date ? getEventInstantMs(state.date) : null;
+      const eventMs = state.date ? getEventInstantMs(state.date, { timezone: editTz(state) }) : null;
       const deadline = parseRsvpDeadline(parsedTime.formatted, {
         eventDate: state.date,
+        timezone: editTz(state),
       });
       if (
         deadline.ok &&
@@ -1355,7 +1421,10 @@ async function handleEditDeadline(
     return true;
   }
 
-  const parsed = parseRsvpDeadline(input, { eventDate: state.date });
+  const parsed = parseRsvpDeadline(input, {
+    eventDate: state.date,
+    timezone: editTz(state),
+  });
   if (!parsed.ok) {
     await sendEditDeadlineQuestion(
       ctx,
@@ -1364,7 +1433,7 @@ async function handleEditDeadline(
     );
     return true;
   }
-  const eventMs = state.date ? getEventInstantMs(state.date) : null;
+  const eventMs = state.date ? getEventInstantMs(state.date, { timezone: editTz(state) }) : null;
   if (
     (eventMs !== null && parsed.instantMs >= eventMs) ||
     parsed.instantMs <= Date.now()
@@ -1401,6 +1470,7 @@ export function persistEditedEventDraft(phone: string): Event | undefined {
     location_maps_url: state.location_maps_url ?? null,
     location_address: state.location_address ?? null,
     image_filename: state.image_filename ?? null,
+    timezone: state.timezone ?? existing?.timezone ?? null,
   });
   clearConversationState(phone);
   if (previousImage && previousImage !== (saved?.image_filename ?? null)) {
@@ -1489,11 +1559,12 @@ async function sendEditDeadlineQuestion(
   const message = extra
     ? `${RSVP_DEADLINE_PROMPT}\n\n${extra}`
     : RSVP_DEADLINE_PROMPT;
+  const state = getConversationState(ctx.phone);
   await sendMessage({
     conversationId: ctx.conversationId,
     accountId: ctx.accountId,
     message,
-    list: rsvpDeadlineChoiceList(eventDate),
+    list: rsvpDeadlineChoiceList(eventDate, state?.timezone),
   });
 }
 

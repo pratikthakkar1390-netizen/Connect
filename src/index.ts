@@ -5,6 +5,7 @@ import { handleZernioWebhook } from './webhooks/zernio.js';
 import { shortRsvpRouter } from './http/shortRsvp.js';
 import { ackUpdateRouter } from './http/ackUpdate.js';
 import { eventWhenRouter } from './http/eventWhen.js';
+import { eventTimezoneRouter } from './http/eventTimezone.js';
 import { vendorPickupRouter } from './http/vendorPickup.js';
 import { eventImageRouter } from './http/eventImage.js';
 import { myEventsRouter } from './http/myEvents.js';
@@ -33,6 +34,7 @@ app.use(shortRsvpRouter);
 app.use(ackUpdateRouter);
 app.use(eventImageRouter);
 app.use(eventWhenRouter);
+app.use(eventTimezoneRouter);
 app.use(vendorPickupRouter);
 app.use(myEventsRouter);
 
@@ -54,6 +56,7 @@ app.listen(config.port, () => {
   console.log(`Ack update: GET|POST /a/:token`);
   console.log(`Event image: GET /i/:token and GET|POST /p/:code`);
   console.log(`Event when picker: GET|POST /d/:code and /when/:token`);
+  console.log(`Event timezone picker: GET|POST /tz/:token`);
   console.log(`Vendor pickup picker: GET|POST /pickup/:token`);
   console.log(`My Events delete: GET|POST /e/:code and /my-events/:token`);
   if (isAdminEnabled()) {

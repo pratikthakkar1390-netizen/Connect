@@ -1,4 +1,5 @@
-import { getEventInstantMs } from '../dates/eventDate.js';
+import { getEventInstantMs, resolveEventTimezone } from '../dates/eventDate.js';
+import { formatTimezoneLabel } from '../timezones/catalog.js';
 import type {
   AdminCustomerRow,
   AdminEventDetail,
@@ -26,6 +27,7 @@ import { adminGuestLabel } from './privacy.js';
 
 function eventLifecycle(event: {
   date: string;
+  timezone?: string | null;
   cancelledAt?: string | null;
   deletedAt?: string | null;
 }): { key: string; label: string } {
@@ -35,7 +37,9 @@ function eventLifecycle(event: {
   if (event.cancelledAt?.trim()) {
     return { key: 'cancelled', label: 'Cancelled' };
   }
-  const instant = getEventInstantMs(event.date);
+  const instant = getEventInstantMs(event.date, {
+    timezone: resolveEventTimezone(event.timezone),
+  });
   if (instant != null && instant < Date.now()) {
     return { key: 'past', label: 'Past' };
   }
@@ -233,6 +237,7 @@ export function renderEventDetail(
   const event = detail.event;
   const life = eventLifecycle({
     date: event.date,
+    timezone: event.timezone,
     cancelledAt: event.cancelled_at,
     deletedAt: event.deleted_at,
   });
@@ -277,6 +282,7 @@ export function renderEventDetail(
     <div class="panel">
       <div class="kv"><span class="kv-label">Organizer</span><span class="mono">${esc(event.organizer_phone)}</span></div>
       <div class="kv"><span class="kv-label">Date / time</span><span>${esc(event.date)}</span></div>
+      <div class="kv"><span class="kv-label">Timezone</span><span>${esc(formatTimezoneLabel(resolveEventTimezone(event.timezone)))}</span></div>
       <div class="kv"><span class="kv-label">Location</span><span>${esc(event.location)}</span></div>
       <div class="kv"><span class="kv-label">Guests</span><span>${esc(String(detail.guestCount))}</span></div>
       <div class="kv"><span class="kv-label">Invitations</span><span>${esc(String(detail.invitationCount))}</span></div>

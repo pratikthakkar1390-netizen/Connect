@@ -176,7 +176,7 @@ test('later RSVP sends confirmation only after thank-you was claimed', async () 
   assert.equal(sent.length, 1);
   assert.equal(
     sent[0]?.message,
-    formatConfirmation(event.name, event.date, 'maybe', 0),
+    formatConfirmation(event.name, event.date, 'maybe', 0, undefined, undefined, event.timezone),
   );
   assert.equal(sent[0]?.message.includes(GUEST_RSVP_THANK_YOU), false);
   assert.equal(getRsvp(event.id, GUEST)?.status, 'maybe');

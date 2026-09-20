@@ -240,6 +240,7 @@ test('create confirm persists theme, dress, and generated maps URL', async () =>
     theme: 'floral',
     dress_code: 'Pastel colors',
     children_allowed: 1,
+    timezone: 'America/New_York',
   });
 
   await continueCreateEventFlow(

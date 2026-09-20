@@ -1,5 +1,6 @@
 import * as chrono from 'chrono-node';
 import { config } from '../config.js';
+import { formatTimezoneLabel, isValidIanaTimeZone } from '../timezones/catalog.js';
 
 export type ParseEventDateFailureReason =
   | 'unparseable'
@@ -45,6 +46,16 @@ export type ParseRsvpDeadlineResult =
 
 export function getEventTimezone(): string {
   return config.eventTimezone;
+}
+
+/** Legacy fallback only when an event/draft has no valid IANA timezone. */
+export function resolveEventTimezone(timezone?: string | null): string {
+  const trimmed = timezone?.trim() ?? '';
+  if (trimmed && isValidIanaTimeZone(trimmed)) {
+    return trimmed;
+  }
+  const fallback = getEventTimezone();
+  return isValidIanaTimeZone(fallback) ? fallback : 'America/New_York';
 }
 
 export interface ZonedWallTime {
@@ -172,6 +183,26 @@ export function zonedWallTimeToUtc(
   return new Date(instant);
 }
 
+function wallClockMatches(
+  instant: Date,
+  wall: ZonedWallTime,
+  timezone: string,
+): boolean {
+  const shown = zonedClockParts(instant, timezone);
+  return (
+    shown.year === wall.year &&
+    shown.month === wall.month &&
+    shown.day === wall.day &&
+    shown.hour === wall.hour &&
+    shown.minute === wall.minute
+  );
+}
+
+/** False for DST spring-forward gaps (no such local time). */
+export function isValidZonedWallTime(wall: ZonedWallTime, timezone: string): boolean {
+  return wallClockMatches(zonedWallTimeToUtc(wall, timezone), wall, timezone);
+}
+
 function chronoRef(reference: Date, timezone: string) {
   return {
     instant: reference,
@@ -186,7 +217,10 @@ function instantFromParsed(
   // ISO/offset timestamps already name an instant. Do not re-read their
   // clock fields as EVENT_TIMEZONE wall time.
   if (parsed.start.isCertain('timezoneOffset')) {
-    return parsed.start.date();
+    const text = parsed.text.trim();
+    if (/[zZ]$/.test(text) || /[+-]\d{2}:?\d{2}$/.test(text)) {
+      return parsed.start.date();
+    }
   }
   return zonedWallTimeToUtc(
     {
@@ -228,6 +262,23 @@ export function parseEventDate(
   const hasDate = hasExplicitDate(parsed);
 
   const instant = instantFromParsed(parsed, timezone);
+  if (
+    timeClass === 'complete' &&
+    !wallClockMatches(
+      instant,
+      {
+        year: parsed.start.get('year') ?? 0,
+        month: parsed.start.get('month') ?? 1,
+        day: parsed.start.get('day') ?? 1,
+        hour: parsed.start.get('hour') ?? 0,
+        minute: parsed.start.get('minute') ?? 0,
+        second: parsed.start.get('second') ?? 0,
+      },
+      timezone,
+    )
+  ) {
+    return { ok: false, reason: 'unparseable' };
+  }
 
   if (timeClass === 'complete') {
     return {
@@ -296,9 +347,27 @@ export function parseEventTime(
 
   const complete = results.filter((result) => classifyEventTime(result) === 'complete');
   if (complete.length === 1) {
+    const instant = instantFromParsed(complete[0], timezone);
+    const start = complete[0].start;
+    if (
+      !wallClockMatches(
+        instant,
+        {
+          year: start.get('year') ?? 0,
+          month: start.get('month') ?? 1,
+          day: start.get('day') ?? 1,
+          hour: start.get('hour') ?? 0,
+          minute: start.get('minute') ?? 0,
+          second: start.get('second') ?? 0,
+        },
+        timezone,
+      )
+    ) {
+      return { ok: false, reason: 'unparseable' };
+    }
     return {
       ok: true,
-      formatted: formatEventDate(instantFromParsed(complete[0], timezone), true, timezone),
+      formatted: formatEventDate(instant, true, timezone),
       hasTime: true,
     };
   }
@@ -617,7 +686,56 @@ function endOfZonedDayMs(
   if (results.length > 0 && hasExplicitTime(results[0])) {
     return instantFromParsed(results[0], timezone).getTime();
   }
-  return date.getTime() + 12 * 60 * 60 * 1000 - 1;
+  const wall = zonedClockParts(date, timezone);
+  return zonedWallTimeToUtc(
+    {
+      year: wall.year,
+      month: wall.month,
+      day: wall.day,
+      hour: 23,
+      minute: 59,
+      second: 59,
+    },
+    timezone,
+  ).getTime();
+}
+
+function pad2(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
+/** Start of the reminder window: N calendar days before the deadline in `timezone`. */
+export function reminderWindowStartMs(
+  deadlineText: string,
+  reminderDays: number,
+  options: ParseRsvpDeadlineOptions = {},
+): number | null {
+  if (!Number.isInteger(reminderDays) || reminderDays < 1) {
+    return null;
+  }
+  const timezone = options.timezone ?? getEventTimezone();
+  const parsed = parseRsvpDeadline(deadlineText, { ...options, timezone });
+  if (!parsed.ok) {
+    return null;
+  }
+  const wall = zonedClockParts(new Date(parsed.instantMs), timezone);
+  const iso = `${wall.year}-${pad2(wall.month)}-${pad2(wall.day)}`;
+  const shifted = addIsoCalendarDays(iso, -reminderDays);
+  if (!shifted) {
+    return null;
+  }
+  const [year, month, day] = shifted.split('-').map(Number);
+  return zonedWallTimeToUtc(
+    {
+      year,
+      month,
+      day,
+      hour: wall.hour,
+      minute: wall.minute,
+      second: wall.second,
+    },
+    timezone,
+  ).getTime();
 }
 
 function isAmbiguous(results: chrono.ParsedResult[]): boolean {
@@ -804,4 +922,8 @@ function formatEventDate(
     day: 'numeric',
     timeZone: timezone,
   }).format(date);
+}
+
+export function formatEventTimezoneLine(timezone?: string | null): string {
+  return `🌎 ${formatTimezoneLabel(resolveEventTimezone(timezone))}`;
 }

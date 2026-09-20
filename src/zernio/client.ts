@@ -1,5 +1,6 @@
 import { Zernio } from '@zernio/node';
 import { config } from '../config.js';
+import { formatEventTimezoneLine } from '../dates/eventDate.js';
 import {
   toWhatsAppListRowId,
   truncateListText,
@@ -498,19 +499,21 @@ export async function sendInteractiveInvite({
   eventName,
   eventDate,
   eventLocation,
+  eventTimezone,
 }: {
   accountId: string;
   conversationId: string;
   eventName: string;
   eventDate: string;
   eventLocation: string;
+  eventTimezone?: string | null;
 }): Promise<void> {
   const zernio = getZernioClient();
   await zernio.messages.sendInboxMessage({
     path: { conversationId },
     body: {
       accountId,
-      message: `You're invited to ${eventName}!\n\n📅 ${eventDate}\n📍 ${eventLocation}\n\nPlease RSVP for this invitation.`,
+      message: `You're invited to ${eventName}!\n\n📅 ${eventDate}\n${formatEventTimezoneLine(eventTimezone)}\n📍 ${eventLocation}\n\nPlease RSVP for this invitation.`,
       buttons: [
         { type: 'postback', title: 'Yes', payload: 'rsvp_yes' },
         { type: 'postback', title: 'No', payload: 'rsvp_no' },

@@ -10,7 +10,7 @@ import {
   normalizePhone,
   parseGuestWhatsAppNumber,
 } from '../config.js';
-import { isCalendarDayAfterEvent, parseRsvpDeadline } from '../dates/eventDate.js';
+import { isCalendarDayAfterEvent, parseRsvpDeadline, resolveEventTimezone } from '../dates/eventDate.js';
 import {
   deleteEventImageFile,
   deleteUnreferencedEventImageFiles,
@@ -42,6 +42,7 @@ export interface Event {
   location_maps_url?: string | null;
   location_address?: string | null;
   image_filename?: string | null;
+  timezone?: string | null;
   created_at: string;
 }
 
@@ -108,6 +109,7 @@ export interface RsvpSummary {
 
 export type ConversationStep =
   | 'WAITING_FOR_EVENT_NAME'
+  | 'WAITING_FOR_EVENT_TIMEZONE'
   | 'WAITING_FOR_EVENT_DATE'
   | 'WAITING_FOR_EVENT_TIME'
   | 'WAITING_FOR_EVENT_LOCATION'
@@ -132,6 +134,7 @@ export type ConversationStep =
   | 'WAITING_FOR_EDIT_FIELD'
   | 'WAITING_FOR_EDIT_NAME'
   | 'WAITING_FOR_EDIT_DATE'
+  | 'WAITING_FOR_EDIT_TIMEZONE'
   | 'WAITING_FOR_EDIT_TIME'
   | 'WAITING_FOR_EDIT_LOCATION'
   | 'WAITING_FOR_EDIT_THEME'
@@ -255,6 +258,7 @@ export interface ConversationState {
   location_address?: string | null;
   image_filename?: string | null;
   vendor_draft?: string | null;
+  timezone?: string | null;
   updated_at: string;
 }
 
@@ -290,6 +294,7 @@ export interface ConversationDraft {
   location_address?: string | null;
   image_filename?: string | null;
   vendor_draft?: string | null;
+  timezone?: string | null;
 }
 
 export interface CreateEventOptions {
@@ -304,6 +309,7 @@ export interface CreateEventOptions {
   locationMapsUrl?: string | null;
   locationAddress?: string | null;
   imageFilename?: string | null;
+  timezone?: string | null;
 }
 
 let db: Database.Database | null = null;
@@ -337,6 +343,7 @@ export function getDb(): Database.Database {
   ensureGuestWhatsAppPhoneColumn(db);
   ensureShortCodeColumns(db);
   ensureEventImageColumn(db);
+  ensureEventTimezoneColumns(db);
   ensureEventWhenCodeTable(db);
   ensureConnectFollowUpColumns(db);
   ensureEventUpdateTables(db);
@@ -675,6 +682,7 @@ function ensureConversationAccountScope(database: Database.Database): void {
         location_address TEXT,
         image_filename TEXT,
         vendor_draft TEXT,
+        timezone TEXT,
         updated_at TEXT NOT NULL DEFAULT (datetime('now')),
         PRIMARY KEY (organizer_phone, account_id)
       );
@@ -688,7 +696,7 @@ function ensureConversationAccountScope(database: Database.Database): void {
                family_name, group_name, max_guests, update_message,
                theme, custom_theme, dress_code,
                location_place_id, location_maps_url, location_address, image_filename,
-               vendor_draft, updated_at
+               vendor_draft, timezone, updated_at
         FROM conversation_states
       `);
     } else {
@@ -700,7 +708,7 @@ function ensureConversationAccountScope(database: Database.Database): void {
                family_name, group_name, max_guests, update_message,
                theme, custom_theme, dress_code,
                location_place_id, location_maps_url, location_address, image_filename,
-               vendor_draft, updated_at
+               vendor_draft, timezone, updated_at
         FROM conversation_states
       `);
     }
@@ -761,14 +769,14 @@ function ensureConnectFollowUpColumns(database: Database.Database): void {
       `ALTER TABLE events ADD COLUMN organizer_post_event_sent_at TEXT`,
     );
     const events = database
-      .prepare(`SELECT id, date FROM events`)
-      .all() as Array<{ id: number; date: string }>;
+      .prepare(`SELECT id, date, timezone FROM events`)
+      .all() as Array<{ id: number; date: string; timezone?: string | null }>;
     const nowMs = Date.now();
     const mark = database.prepare(
       `UPDATE events SET organizer_post_event_sent_at = datetime('now') WHERE id = ?`,
     );
     for (const event of events) {
-      if (isCalendarDayAfterEvent(event.date, nowMs)) {
+      if (isCalendarDayAfterEvent(event.date, nowMs, event.timezone ?? undefined)) {
         mark.run(event.id);
       }
     }
@@ -900,6 +908,21 @@ export function ensureEventImageColumn(
 ): void {
   ensureColumn(database, 'events', 'image_filename', 'TEXT');
   ensureColumn(database, 'conversation_states', 'image_filename', 'TEXT');
+}
+
+/** Additive event timezone. Existing rows backfill to EVENT_TIMEZONE. */
+export function ensureEventTimezoneColumns(
+  database: Database.Database = getDb(),
+): void {
+  ensureColumn(database, 'events', 'timezone', 'TEXT');
+  ensureColumn(database, 'conversation_states', 'timezone', 'TEXT');
+  database
+    .prepare(
+      `UPDATE events
+       SET timezone = ?
+       WHERE timezone IS NULL OR trim(timezone) = ''`,
+    )
+    .run(resolveEventTimezone());
 }
 
 export const VENDOR_STATUSES = [
@@ -1402,7 +1425,7 @@ export function isRsvpDeadlinePassed(
   const parsed = parseRsvpDeadline(trimmed, {
     reference: now,
     eventDate: options.eventDate,
-    timezone: options.timezone,
+    timezone: resolveEventTimezone(options.timezone),
   });
   if (!parsed.ok) {
     return false;
@@ -1434,9 +1457,10 @@ export function createEvent(
       name, date, location, organizer_phone, rsvp_token, rsvp_code, short_code,
       invitation_count, rsvp_deadline, children_allowed, reminder_days,
       theme, custom_theme, dress_code,
-      location_place_id, location_maps_url, location_address, image_filename
+      location_place_id, location_maps_url, location_address, image_filename,
+      timezone
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     RETURNING *
   `);
   const phone = normalizePhone(organizerPhone);
@@ -1467,6 +1491,7 @@ export function createEvent(
         options.locationMapsUrl?.trim() || null,
         options.locationAddress?.trim() || null,
         options.imageFilename?.trim() || null,
+        resolveEventTimezone(options.timezone),
       ) as Event;
     } catch (error) {
       if (attempt === RSVP_TOKEN_ATTEMPTS - 1 || !isRsvpUniqueError(error)) {
@@ -2279,6 +2304,10 @@ export function setConversationState(
       draft.vendor_draft !== undefined
         ? draft.vendor_draft
         : (existing?.vendor_draft ?? null),
+    timezone:
+      draft.timezone !== undefined
+        ? draft.timezone
+        : (existing?.timezone ?? null),
   };
 
   const stmt = database.prepare(`
@@ -2289,9 +2318,9 @@ export function setConversationState(
       family_name, group_name, max_guests, update_message,
       theme, custom_theme, dress_code,
       location_place_id, location_maps_url, location_address, image_filename,
-      vendor_draft, updated_at
+      vendor_draft, timezone, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(organizer_phone, account_id) DO UPDATE SET
       state = excluded.state,
       name = excluded.name,
@@ -2318,6 +2347,7 @@ export function setConversationState(
       location_address = excluded.location_address,
       image_filename = excluded.image_filename,
       vendor_draft = excluded.vendor_draft,
+      timezone = excluded.timezone,
       updated_at = datetime('now')
     RETURNING *
   `);
@@ -2349,6 +2379,7 @@ export function setConversationState(
     merged.location_address,
     merged.image_filename,
     merged.vendor_draft,
+    merged.timezone,
   ) as ConversationState;
 
   if (
@@ -2432,6 +2463,7 @@ export function updateEventDetails(
     location_maps_url?: string | null;
     location_address?: string | null;
     image_filename?: string | null;
+    timezone?: string | null;
   },
 ): Event | undefined {
   const database = getDb();
@@ -2451,7 +2483,7 @@ export function updateEventDetails(
            theme = ?, custom_theme = ?, dress_code = ?,
            rsvp_deadline = ?,
            location_place_id = ?, location_maps_url = ?, location_address = ?,
-           image_filename = ?
+           image_filename = ?, timezone = ?
        WHERE id = ?
        RETURNING *`,
     )
@@ -2467,6 +2499,7 @@ export function updateEventDetails(
       keep(details.location_maps_url, existing.location_maps_url),
       keep(details.location_address, existing.location_address),
       keep(details.image_filename, existing.image_filename),
+      keep(details.timezone, existing.timezone),
       eventId,
     ) as Event | undefined;
 }

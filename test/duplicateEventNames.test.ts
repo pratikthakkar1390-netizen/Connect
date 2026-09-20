@@ -101,6 +101,7 @@ test('1-11. same name always inserts a new event and My Events manages by id', a
     date: 'November 21, 2026 at 5:00 PM',
     location: 'Garden',
     event_id: first.id,
+    timezone: 'America/New_York',
   });
 
   await continueCreateEventFlow(ctx, CONFIRM_EVENT);
@@ -236,6 +237,7 @@ test('CREATE_EVENT clears leftover event_id so confirm cannot update the old row
     date: 'June 2',
     location: 'Garden',
     event_id: existing.id,
+    timezone: 'America/New_York',
   });
   await continueCreateEventFlow(ctx, 'CONFIRM');
 

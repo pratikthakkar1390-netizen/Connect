@@ -1,6 +1,7 @@
 import { esc } from '../admin/html.js';
 import type { Event } from '../db/store.js';
 import { renderConnectLayout } from './rsvpPage.js';
+import { formatEventTimezoneLine } from '../dates/eventDate.js';
 import { signOwnedEventRef } from './myEventsToken.js';
 
 const PAGE_CSS = `
@@ -122,7 +123,7 @@ export function renderMyEventsSelectPage(
           <input type="checkbox" name="event" value="${esc(ref)}">
           <span>
             <p class="pick-name">${esc(event.name)}</p>
-            <p class="pick-meta">${esc(event.date)} · ${esc(event.location)}</p>
+            <p class="pick-meta">${esc(event.date)} · ${esc(formatEventTimezoneLine(event.timezone).replace('🌎 ', ''))} · ${esc(event.location)}</p>
           </span>
         </label>
       </li>`;
@@ -161,7 +162,7 @@ export function renderMyEventsConfirmPage(
       (event) =>
         `<li>
           <p class="pick-name">${esc(event.name)}</p>
-          <p class="pick-meta">${esc(event.date)} · ${esc(event.location)}</p>
+          <p class="pick-meta">${esc(event.date)} · ${esc(formatEventTimezoneLine(event.timezone).replace('🌎 ', ''))} · ${esc(event.location)}</p>
         </li>`,
     )
     .join('');

@@ -1,4 +1,5 @@
 import type { RsvpStatus } from '../db/store.js';
+import { formatEventTimezoneLine } from '../dates/eventDate.js';
 
 export interface ParsedRsvp {
   status: RsvpStatus;
@@ -153,24 +154,33 @@ export function formatConfirmation(
   guestCount: number,
   adultCount?: number,
   childCount?: number,
+  timezone?: string | null,
 ): string {
+  let message: string;
   switch (status) {
     case 'yes': {
       const adults = adultCount ?? guestCount;
       const children = childCount ?? 0;
       const total = adults + children;
       if (children > 0) {
-        return `Thanks! You're confirmed for *${eventName}* on ${eventDate}.\nTotal attending: ${total} (${adults} adult${adults === 1 ? '' : 's'}, ${children} child${children === 1 ? '' : 'ren'}).\nSee you there!`;
+        message = `Thanks! You're confirmed for *${eventName}* on ${eventDate}.\nTotal attending: ${total} (${adults} adult${adults === 1 ? '' : 's'}, ${children} child${children === 1 ? '' : 'ren'}).\nSee you there!`;
+      } else {
+        message = total > 1
+          ? `Thanks! You're confirmed for *${eventName}* on ${eventDate} with ${total} guests total. See you there!`
+          : `Thanks! You're confirmed for *${eventName}* on ${eventDate}. See you there!`;
       }
-      return total > 1
-        ? `Thanks! You're confirmed for *${eventName}* on ${eventDate} with ${total} guests total. See you there!`
-        : `Thanks! You're confirmed for *${eventName}* on ${eventDate}. See you there!`;
+      break;
     }
     case 'no':
       return `Got it — we've noted you can't make *${eventName}*. Hope to see you next time!`;
     case 'maybe':
-      return `Thanks! We've marked you as *Maybe* for *${eventName}* on ${eventDate}. Reply anytime to update your RSVP.`;
+      message = `Thanks! We've marked you as *Maybe* for *${eventName}* on ${eventDate}. Reply anytime to update your RSVP.`;
+      break;
     default:
-      return `RSVP updated for *${eventName}*.`;
+      message = `RSVP updated for *${eventName}*.`;
   }
+  if (timezone !== undefined) {
+    message += `\n${formatEventTimezoneLine(timezone)}`;
+  }
+  return message;
 }

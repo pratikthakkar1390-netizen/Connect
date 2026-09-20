@@ -598,6 +598,7 @@ test('selected reminder days are preserved through confirmation', async () => {
     date: 'Sunday, September 20, 2026 at 7:30 PM',
     location: 'Hall',
     rsvp_deadline: 'Tuesday, September 15, 2026',
+    timezone: 'America/New_York',
   });
 
   await continueCreateEventFlow(

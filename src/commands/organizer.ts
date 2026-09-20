@@ -10,6 +10,7 @@ import {
   type RsvpSummary,
 } from '../db/store.js';
 import { isWebGuestPhone, WEB_GUEST_PHONE_PREFIX } from '../config.js';
+import { formatEventTimezoneLine } from '../dates/eventDate.js';
 
 export const VIEW_RSVPS = 'VIEW_RSVPS';
 const WHATSAPP_TEXT_LIMIT = 4096;
@@ -173,6 +174,7 @@ export function formatRsvpStatusMessage(
   const lines = [
     `*RSVP Status: ${event.name}*`,
     `📅 ${event.date}`,
+    formatEventTimezoneLine(event.timezone),
     ...(deadlineLine ? [deadlineLine] : []),
     '',
     `📨 Invitations: ${invitations}`,

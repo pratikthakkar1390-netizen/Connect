@@ -44,7 +44,7 @@ export function webRsvpConfirmation(
 ): string {
   const total = status === 'yes' ? adults + children : 0;
   return stripWhatsAppMarkup(
-    formatConfirmation(event.name, event.date, status, total, adults, children),
+    formatConfirmation(event.name, event.date, status, total, adults, children, event.timezone),
   );
 }
 

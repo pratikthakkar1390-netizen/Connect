@@ -11,6 +11,7 @@ import {
   themeLabel,
 } from '../events/theme.js';
 import { resolveEventMapsUrl } from '../maps/location.js';
+import { formatEventTimezoneLine } from '../dates/eventDate.js';
 
 export function splitEventWhen(date: string): {
   dateLabel: string;
@@ -311,6 +312,7 @@ function eventMetaHtml(event: Event): string {
   if (when.timeLabel) {
     lines.push(`<p>⏰ ${esc(when.timeLabel)}</p>`);
   }
+  lines.push(`<p>${esc(formatEventTimezoneLine(event.timezone))}</p>`);
   if (event.location?.trim()) {
     lines.push(`<p>📍 ${esc(event.location.trim())}</p>`);
   }

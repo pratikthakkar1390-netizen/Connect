@@ -51,6 +51,7 @@ const GREETINGS = [
 
 const CREATE_STEPS: ConversationStep[] = [
   'WAITING_FOR_EVENT_NAME',
+  'WAITING_FOR_EVENT_TIMEZONE',
   'WAITING_FOR_EVENT_DATE',
   'WAITING_FOR_EVENT_TIME',
   'WAITING_FOR_EVENT_LOCATION',
@@ -79,6 +80,7 @@ const UPDATE_STEPS: ConversationStep[] = [
   'WAITING_FOR_EDIT_NAME',
   'WAITING_FOR_EDIT_DATE',
   'WAITING_FOR_EDIT_TIME',
+  'WAITING_FOR_EDIT_TIMEZONE',
   'WAITING_FOR_EDIT_LOCATION',
   'WAITING_FOR_EDIT_THEME',
   'WAITING_FOR_EDIT_CUSTOM_THEME',
@@ -226,9 +228,9 @@ test('valid event name still continues create-event after a prior greeting pause
   const continued = await continueCreateEventFlow(ctx('Summer BBQ'), 'Summer BBQ');
 
   assert.equal(continued, true);
-  assert.equal(getConversationState(PHONE)?.state, 'WAITING_FOR_EVENT_DATE');
+  assert.equal(getConversationState(PHONE)?.state, 'WAITING_FOR_EVENT_TIMEZONE');
   assert.equal(getConversationState(PHONE)?.name, 'Summer BBQ');
-  assert.match(lastMessage().message, /When is \*Summer BBQ\*/);
+  assert.match(lastMessage().message, /What timezone is this event in/);
 });
 
 test('valid family name and guest limit still continue the invite wizard', async () => {
