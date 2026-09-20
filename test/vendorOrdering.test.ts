@@ -167,7 +167,8 @@ test('customer cart, quantities, totals, change, cancel, and account isolation',
   assert.ok(roti && methi && plain);
 
   await handleCustomerOrderInbound(ctx(CUSTOMER, 'Hi'), vendor);
-  assert.match(sent.at(-1)?.message ?? '', /Order Ahead/);
+  assert.match(sent.at(-1)?.message ?? '', /🛍️ Shop/);
+  assert.ok(sent.at(-1)?.buttons?.some((button) => button.title === '🛍️ Shop'));
 
   await handleCustomerOrderInbound(tap(CUSTOMER, `VENDOR_BUY:${roti.id}`), vendor);
   await handleCustomerOrderInbound(tap(CUSTOMER, 'VENDOR_QTY:2'), vendor);
@@ -476,7 +477,17 @@ test('CONNECT RSVP data and unknown-account safety remain intact', async () => {
   });
   setVendorZernioWhatsAppAccountId(vendor.id, VENDOR_ACCT);
   await handleVendorAccountInbound(ctx(CUSTOMER, 'Hi'), vendor);
-  assert.match(sent.at(-1)?.message ?? '', /Order Ahead/);
+  assert.match(sent.at(-1)?.message ?? '', /🛍️ Shop/);
+  assert.ok(sent.at(-1)?.buttons?.some((button) => button.title === '🛍️ Shop'));
   await handleVendorAccountInbound(ctx(OPERATOR, 'Hi'), vendor);
   assert.match(sent.at(-1)?.message ?? '', /CONNECT Vendor/);
+  assert.equal(
+    sent.at(-1)?.buttons?.some((button) => button.title === '🛍️ Shop') ?? false,
+    false,
+  );
+  assert.ok(
+    sent.at(-1)?.list?.sections?.some((section) =>
+      section.rows.some((row) => row.id === 'VENDOR_ORDERS'),
+    ),
+  );
 });

@@ -167,6 +167,52 @@ function cartActions(): { button: string; sections: InboxListSection[] } {
   };
 }
 
+export async function showCustomerShopHome(
+  ctx: CommandContext,
+  vendor: Vendor,
+): Promise<boolean> {
+  const draft = readOrderDraft(ctx.phone, ctx.accountId);
+  const sent = await reply(
+    ctx,
+    '🛍️ Shop\n\nTap Shop to start your order and pick a pickup time.',
+    [{ title: '🛍️ Shop', payload: 'VENDOR_SHOP' }],
+  );
+  if (sent) {
+    saveOrderState(
+      ctx.phone,
+      'VENDOR_ORDER_HOME',
+      { ...draft, vendorId: vendor.id },
+      ctx.accountId,
+    );
+  }
+  return sent;
+}
+
+async function sendCustomerShopLink(
+  ctx: CommandContext,
+  vendor: Vendor,
+): Promise<boolean> {
+  const url = vendorPickupPickerUrl(ctx.phone, ctx.accountId, vendor.id);
+  const sent = await reply(
+    ctx,
+    [
+      '🛍️ Shop',
+      '',
+      '📅 Pick a date and time to start your order:',
+      url,
+    ].join('\n'),
+  );
+  if (sent) {
+    saveOrderState(
+      ctx.phone,
+      'VENDOR_ORDER_MENU',
+      { ...readOrderDraft(ctx.phone, ctx.accountId), vendorId: vendor.id },
+      ctx.accountId,
+    );
+  }
+  return sent ? showCustomerOrderMenu(ctx, vendor) : false;
+}
+
 export async function showCustomerOrderMenu(
   ctx: CommandContext,
   vendor: Vendor,
@@ -744,6 +790,7 @@ export function isVendorOrderCommand(input: string): boolean {
       'VENDOR_ADD_MORE',
       'VENDOR_CHANGE_ORDER',
       'VENDOR_CANCEL_CART',
+      'VENDOR_SHOP',
       'VENDOR_PICKUP_TIME',
       'VENDOR_CONFIRM_ORDER',
       'VENDOR_KEEP_ORDER',
@@ -765,11 +812,14 @@ export async function handleCustomerOrderInbound(
   };
   saveOrderState(
     ctx.phone,
-    getConversationState(ctx.phone, ctx.accountId)?.state ?? 'VENDOR_ORDER_MENU',
+    getConversationState(ctx.phone, ctx.accountId)?.state ?? 'VENDOR_ORDER_HOME',
     draft,
     ctx.accountId,
   );
 
+  if (compact === 'VENDOR_SHOP') {
+    return sendCustomerShopLink(ctx, vendor);
+  }
   if (compact.startsWith('VENDOR_BUY:')) {
     const productId = Number(trimmed.slice('VENDOR_BUY:'.length));
     return showQuantity(ctx, vendor, productId);
@@ -902,9 +952,9 @@ export async function handleCustomerOrderInbound(
 
   const { isGreeting } = await import('../../commands/welcome.js');
   if (isGreeting(ctx.text)) {
-    return showCustomerOrderMenu(ctx, vendor);
+    return showCustomerShopHome(ctx, vendor);
   }
-  return showCustomerOrderMenu(ctx, vendor);
+  return showCustomerShopHome(ctx, vendor);
 }
 
 export async function handleVendorOrderCommand(ctx: CommandContext): Promise<boolean> {

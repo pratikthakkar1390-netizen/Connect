@@ -557,7 +557,7 @@ export async function handleVendorAccountInbound(
     getConversationState(ctx.phone, ctx.accountId)?.state ??
       (normalizePhone(ctx.phone) === normalizePhone(vendor.whatsapp_phone)
         ? 'VENDOR_MENU'
-        : 'VENDOR_ORDER_MENU'),
+        : 'VENDOR_ORDER_HOME'),
     draft,
     ctx.accountId,
   );
