@@ -29,6 +29,14 @@ import {
 } from './createEventFlow.js';
 import { myEventsPageUrl } from '../http/myEventsToken.js';
 import {
+  GUEST_LIST,
+  buildGuestListReply,
+  formatGuestDetailsMessage,
+  getGuestListEntry,
+  loadOwnedEventForGuestList,
+  parseGuestDetailAction,
+} from './guestList.js';
+import {
   handleSaveConnectContact,
   isSaveConnectContactCommand,
 } from './saveContact.js';
@@ -324,6 +332,10 @@ export function manageEventMoreList(event: Event): NonNullable<InboxReply['list'
         title: 'Manage',
         rows: [
           {
+            id: eventListRowId(GUEST_LIST, event.id),
+            title: '👥 Guest List',
+          },
+          {
             id: eventListRowId('EDIT_EVENT', event.id),
             title: '✏️ Edit Event',
           },
@@ -469,6 +481,48 @@ async function handleManageEvent(ctx: CommandContext, eventId?: number): Promise
   }
 
   await sendReplies(ctx, [buildManageEventReply(event)]);
+}
+
+async function handleGuestList(ctx: CommandContext, eventId?: number): Promise<void> {
+  if (eventId === undefined) {
+    const events = listEventsForOrganizer(ctx.phone);
+    if (events.length === 0) {
+      await sendCreatePrompt(ctx);
+      return;
+    }
+    if (events.length === 1) {
+      await sendReplies(ctx, [buildGuestListReply(events[0], ctx.phone)]);
+      return;
+    }
+    await sendReplies(ctx, buildMyEventsReply(events));
+    return;
+  }
+
+  const event = loadOwnedEventForGuestList(eventId, ctx.phone);
+  if (!event) {
+    await denyAccess(ctx);
+    return;
+  }
+
+  await sendReplies(ctx, [buildGuestListReply(event, ctx.phone)]);
+}
+
+async function handleGuestDetail(
+  ctx: CommandContext,
+  eventId: number,
+  guestId: number,
+): Promise<void> {
+  const event = loadOwnedEventForGuestList(eventId, ctx.phone);
+  if (!event) {
+    await denyAccess(ctx);
+    return;
+  }
+  const entry = getGuestListEntry(event.id, guestId);
+  if (!entry) {
+    await reply(ctx, 'That guest was not found on this event.');
+    return;
+  }
+  await reply(ctx, formatGuestDetailsMessage(entry));
 }
 
 async function handleMoreEvent(ctx: CommandContext, eventId: number): Promise<void> {
@@ -684,6 +738,22 @@ export async function handleCustomerCommand(
       return true;
     }
     await handleEventDetails(ctx, eventId);
+    return true;
+  }
+
+  if (hasEventAction(trimmed, GUEST_LIST)) {
+    const selected = matchEventAction(trimmed, GUEST_LIST);
+    if (selected.invalidSuffix) {
+      await denyAccess(ctx);
+      return true;
+    }
+    await handleGuestList(ctx, selected.eventId);
+    return true;
+  }
+
+  const guestDetail = parseGuestDetailAction(trimmed);
+  if (guestDetail) {
+    await handleGuestDetail(ctx, guestDetail.eventId, guestDetail.guestId);
     return true;
   }
 

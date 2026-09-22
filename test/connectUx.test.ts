@@ -442,6 +442,7 @@ test('27. Manage Event keeps invite, RSVP, and details actions', () => {
   assert.deepEqual(
     more.list?.sections[0].rows.map((row) => row.id),
     [
+      `GUEST_LIST:${event.id}`,
       `EDIT_EVENT:${event.id}`,
       `SEND_UPDATE:${event.id}`,
       `VOID_EVENT:${event.id}`,

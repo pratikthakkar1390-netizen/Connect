@@ -51,6 +51,9 @@ import { shortRsvpRouter } from '../src/http/shortRsvp.js';
 import type { SendMessageParams } from '../src/zernio/client.js';
 
 process.env.DATABASE_PATH = ':memory:';
+
+/** Those two tests freeze `new Date()` so Sep 20 stays in the RSVP-deadline window. */
+const FIXED_NOW_MS = Date.parse('2026-09-05T16:00:00.000Z');
 process.env.WEBHOOK_SECRET = 'event-image-test-secret';
 
 const PHONE = '+15551116666';
@@ -125,7 +128,8 @@ test.afterEach(() => {
   closeDb();
 });
 
-test('event creation with no image still works', async () => {
+test('event creation with no image still works', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: FIXED_NOW_MS });
   setConversationState(PHONE, 'WAITING_FOR_EVENT_IMAGE', {
     name: 'Picnic',
     date: 'Sunday, September 20, 2026 at 7:30 PM',
@@ -283,7 +287,8 @@ test('event image is associated with the correct event and served on the RSVP pa
   });
 });
 
-test('upload page preview, skip, invalid type, oversize, and continue', async () => {
+test('upload page preview, skip, invalid type, oversize, and continue', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: FIXED_NOW_MS });
   setConversationState(PHONE, 'WAITING_FOR_EVENT_IMAGE', {
     name: 'Wedding',
     date: 'Sunday, September 20, 2026 at 7:30 PM',

@@ -196,6 +196,7 @@ test('Manage Event is Invite, RSVPs, and More', () => {
   assert.deepEqual(
     manageEventMoreList(event).sections[0].rows.map((row) => row.title),
     [
+      '👥 Guest List',
       '✏️ Edit Event',
       '📢 Send Update',
       '❌ Cancel Event',

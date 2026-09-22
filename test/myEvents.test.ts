@@ -211,6 +211,7 @@ test('Manage Event menu wires existing invite, RSVP, and details handlers', () =
   assert.deepEqual(
     manageEventMoreList(event).sections[0].rows.map((row) => row.id),
     [
+      `GUEST_LIST:${event.id}`,
       `EDIT_EVENT:${event.id}`,
       `SEND_UPDATE:${event.id}`,
       `VOID_EVENT:${event.id}`,

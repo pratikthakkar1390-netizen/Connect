@@ -9,6 +9,7 @@ import { eventTimezoneRouter } from './http/eventTimezone.js';
 import { vendorPickupRouter } from './http/vendorPickup.js';
 import { eventImageRouter } from './http/eventImage.js';
 import { myEventsRouter } from './http/myEvents.js';
+import { guestListRouter } from './http/guestList.js';
 import adminRouter from './admin/router.js';
 import { isAdminEnabled } from './admin/auth.js';
 import { startReminderScheduler } from './reminders/scheduler.js';
@@ -37,6 +38,7 @@ app.use(eventWhenRouter);
 app.use(eventTimezoneRouter);
 app.use(vendorPickupRouter);
 app.use(myEventsRouter);
+app.use(guestListRouter);
 
 app.post(
   '/webhooks/zernio',
@@ -59,6 +61,7 @@ app.listen(config.port, () => {
   console.log(`Event timezone picker: GET|POST /tz/:token`);
   console.log(`Vendor pickup picker: GET|POST /pickup/:token`);
   console.log(`My Events delete: GET|POST /e/:code and /my-events/:token`);
+  console.log(`Guest list: GET /guests/:token and GET /guests/:token/g/:guestId`);
   if (isAdminEnabled()) {
     console.log(`Admin dashboard: GET /admin (Basic Auth)`);
   }

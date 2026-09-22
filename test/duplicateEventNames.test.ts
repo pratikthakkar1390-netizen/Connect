@@ -266,6 +266,7 @@ test('Manage Event payloads stay id-based for duplicate names', () => {
   assert.deepEqual(
     manageEventMoreList(first).sections[0].rows.map((row) => row.id),
     [
+      `GUEST_LIST:${first.id}`,
       `EDIT_EVENT:${first.id}`,
       `SEND_UPDATE:${first.id}`,
       `VOID_EVENT:${first.id}`,
