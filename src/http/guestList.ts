@@ -6,8 +6,9 @@ import {
   loadOwnedEventForGuestList,
   searchGuestListEntries,
 } from '../commands/guestList.js';
+import { lookupGuestListByShortCode, type Event } from '../db/store.js';
 import { renderGuestDetailPage, renderGuestListPage, renderInvalidGuestListPage } from './guestListPage.js';
-import { verifyGuestListToken } from './guestListToken.js';
+import { verifyGuestListToken, type GuestListPayload } from './guestListToken.js';
 
 export const guestListRouter = Router();
 
@@ -20,8 +21,8 @@ function sendInvalid(res: Response): void {
   res.status(404).type('html').send(renderInvalidGuestListPage());
 }
 
-function resolveOwnedEvent(req: Request) {
-  const payload = verifyGuestListToken(String(req.params.token ?? ''));
+function resolveFromToken(token: string): { payload: GuestListPayload; event: Event } | null {
+  const payload = verifyGuestListToken(token);
   if (!payload) {
     return null;
   }
@@ -32,8 +33,24 @@ function resolveOwnedEvent(req: Request) {
   return { payload, event };
 }
 
-function handleList(req: Request, res: Response): void {
-  const resolved = resolveOwnedEvent(req);
+function resolveFromShortCode(code: string) {
+  const mapped = lookupGuestListByShortCode(code);
+  if (!mapped) {
+    return null;
+  }
+  const resolved = resolveFromToken(mapped.token);
+  if (!resolved || resolved.payload.eventId !== mapped.eventId) {
+    return null;
+  }
+  return resolved;
+}
+
+function handleList(
+  req: Request,
+  res: Response,
+  resolved: { payload: GuestListPayload; event: Event } | null,
+  tokenPath: string,
+): void {
   if (!resolved) {
     sendInvalid(res);
     return;
@@ -43,7 +60,6 @@ function handleList(req: Request, res: Response): void {
     buildGuestListEntries(resolved.event.id),
     query,
   );
-  const tokenPath = `/guests/${encodeURIComponent(String(req.params.token ?? ''))}`;
   res.type('html').send(
     renderGuestListPage({
       event: resolved.event,
@@ -55,8 +71,12 @@ function handleList(req: Request, res: Response): void {
   );
 }
 
-function handleDetail(req: Request, res: Response): void {
-  const resolved = resolveOwnedEvent(req);
+function handleDetail(
+  req: Request,
+  res: Response,
+  resolved: { payload: GuestListPayload; event: Event } | null,
+  tokenPath: string,
+): void {
   if (!resolved) {
     sendInvalid(res);
     return;
@@ -71,7 +91,6 @@ function handleDetail(req: Request, res: Response): void {
     sendInvalid(res);
     return;
   }
-  const tokenPath = `/guests/${encodeURIComponent(String(req.params.token ?? ''))}`;
   res.type('html').send(
     renderGuestDetailPage({
       event: resolved.event,
@@ -81,5 +100,42 @@ function handleDetail(req: Request, res: Response): void {
   );
 }
 
-guestListRouter.get('/guests/:token', handleList);
-guestListRouter.get('/guests/:token/g/:guestId', handleDetail);
+guestListRouter.get('/g/:code', (req, res) => {
+  const code = String(req.params.code ?? '');
+  handleList(
+    req,
+    res,
+    resolveFromShortCode(code),
+    `/g/${encodeURIComponent(code)}`,
+  );
+});
+
+guestListRouter.get('/g/:code/g/:guestId', (req, res) => {
+  const code = String(req.params.code ?? '');
+  handleDetail(
+    req,
+    res,
+    resolveFromShortCode(code),
+    `/g/${encodeURIComponent(code)}`,
+  );
+});
+
+guestListRouter.get('/guests/:token', (req, res) => {
+  const token = String(req.params.token ?? '');
+  handleList(
+    req,
+    res,
+    resolveFromToken(token),
+    `/guests/${encodeURIComponent(token)}`,
+  );
+});
+
+guestListRouter.get('/guests/:token/g/:guestId', (req, res) => {
+  const token = String(req.params.token ?? '');
+  handleDetail(
+    req,
+    res,
+    resolveFromToken(token),
+    `/guests/${encodeURIComponent(token)}`,
+  );
+});

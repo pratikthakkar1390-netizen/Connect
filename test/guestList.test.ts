@@ -4,13 +4,18 @@ import express from 'express';
 import http from 'node:http';
 import {
   addGuests,
+  allocateGuestListShortCode,
   closeDb,
   createEvent,
   createFamilyInvitation,
   createInvitation,
+  generateGuestListShortCode,
+  generateShortCode,
   getDb,
   getRsvp,
   getRsvpSummary,
+  lookupGuestListByShortCode,
+  lookupShortRsvpTarget,
   setGuestName,
   setGuestWhatsAppPhone,
   softDeleteOwnedEvents,
@@ -31,7 +36,14 @@ import {
 } from '../src/commands/welcome.js';
 import { handleGuestRsvp, setRsvpMessageSender } from '../src/rsvp/handler.js';
 import { guestListRouter } from '../src/http/guestList.js';
-import { signGuestListToken } from '../src/http/guestListToken.js';
+import {
+  GUEST_LIST_TOKEN_TTL_MS,
+  guestListPageUrl,
+  guestListShortPagePath,
+  signGuestListToken,
+  verifyGuestListToken,
+} from '../src/http/guestListToken.js';
+import { shortRsvpRouter } from '../src/http/shortRsvp.js';
 import type { CommandContext } from '../src/commands/organizer.js';
 import type { SendMessageParams } from '../src/zernio/client.js';
 
@@ -143,7 +155,8 @@ test('Guest List loads for an authorized organizer', async () => {
   assert.match(reply.message, /⏳ Awaiting: 1/);
   assert.match(reply.message, /👨 Adults: 2/);
   assert.match(reply.message, /👧 Children: 1/);
-  assert.match(reply.message, /\/guests\//);
+  assert.match(reply.message, /\/g\/[0-9A-HJKMNP-TV-Z]{6}\b/i);
+  assert.doesNotMatch(reply.message, /\/guests\//);
   assert.equal(reply.list?.button, 'Guests');
   assert.ok(
     reply.list?.sections[0].rows.some((row) => row.id === guestDetailRowId(event.id, john.id)),
@@ -294,5 +307,124 @@ test('soft-deleted events stay hidden from Guest List', async () => {
     const token = signGuestListToken(OWNER, event.id);
     const res = await fetch(`${baseUrl}/guests/${encodeURIComponent(token)}`);
     assert.equal(res.status, 404);
+    const shortPath = guestListShortPagePath(OWNER, event.id);
+    const shortRes = await fetch(`${baseUrl}${shortPath}`);
+    assert.equal(shortRes.status, 404);
+  });
+});
+
+test('Guest List short codes are 6 Crockford characters', () => {
+  const codes = new Set(
+    Array.from({ length: 8 }, () => generateGuestListShortCode()),
+  );
+  assert.equal(codes.size, 8);
+  for (const code of codes) {
+    assert.match(code, /^[0-9A-HJKMNP-TV-Z]{6}$/);
+    assert.notEqual(code.length, generateShortCode().length);
+  }
+});
+
+test('short Guest List code resolves to the matching event', () => {
+  const { event } = seedWedding();
+  const other = createEvent('Other Party', 'Oct 1', 'Hall', OTHER);
+  const path = guestListShortPagePath(OWNER, event.id);
+  const code = path.replace('/g/', '');
+  assert.match(code, /^[0-9A-HJKMNP-TV-Z]{6}$/);
+  const mapped = lookupGuestListByShortCode(code);
+  assert.ok(mapped);
+  assert.equal(mapped.eventId, event.id);
+  assert.notEqual(mapped.eventId, other.id);
+  const payload = verifyGuestListToken(mapped.token);
+  assert.equal(payload?.phone, OWNER);
+  assert.equal(payload?.eventId, event.id);
+});
+
+test('authorized organizer can open /g/XXXXXX; search and details still work', async () => {
+  const { event, john } = seedWedding();
+  const path = guestListShortPagePath(OWNER, event.id);
+  assert.match(guestListPageUrl(OWNER, event.id), /\/g\/[0-9A-HJKMNP-TV-Z]{6}$/);
+
+  await withGuestListServer(async (baseUrl) => {
+    const listRes = await fetch(`${baseUrl}${path}`);
+    assert.equal(listRes.status, 200);
+    const listHtml = await listRes.text();
+    assert.match(listHtml, /Wedding/);
+    assert.match(listHtml, /John Patel/);
+    assert.doesNotMatch(listHtml, /\/guests\//);
+
+    const searchRes = await fetch(
+      `${baseUrl}${path}?q=${encodeURIComponent('kumar')}`,
+    );
+    const searchHtml = await searchRes.text();
+    assert.match(searchHtml, /Raj Kumar/);
+    assert.doesNotMatch(searchHtml, /John Patel/);
+
+    const detailRes = await fetch(`${baseUrl}${path}/g/${john.id}`);
+    assert.equal(detailRes.status, 200);
+    assert.match(await detailRes.text(), /Status: Yes/);
+  });
+});
+
+test('unauthorized organizer short Guest List code is blocked', async () => {
+  const { event } = seedWedding();
+  const token = signGuestListToken(OTHER, event.id);
+  const code = allocateGuestListShortCode(
+    token,
+    event.id,
+    Date.now() + GUEST_LIST_TOKEN_TTL_MS,
+  );
+  await withGuestListServer(async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/g/${code}`);
+    assert.equal(res.status, 404);
+    assert.match(await res.text(), /Guest list unavailable/);
+  });
+});
+
+test('invalid Guest List short code is blocked', async () => {
+  getDb();
+  await withGuestListServer(async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/g/ZZZZZZ`);
+    assert.equal(res.status, 404);
+  });
+});
+
+test('existing long /guests/:token Guest List URL still works', async () => {
+  const { event } = seedWedding();
+  await withGuestListServer(async (baseUrl) => {
+    const token = signGuestListToken(OWNER, event.id);
+    const res = await fetch(`${baseUrl}/guests/${encodeURIComponent(token)}`);
+    assert.equal(res.status, 200);
+    assert.match(await res.text(), /John Patel/);
+  });
+});
+
+test('existing RSVP short links remain 8-character /r/ codes', async () => {
+  const { event } = seedWedding();
+  assert.equal(event.short_code?.length, 8);
+  assert.match(event.short_code ?? '', /^[0-9A-HJKMNP-TV-Z]{8}$/);
+  assert.equal(lookupShortRsvpTarget(event.short_code ?? '')?.event.id, event.id);
+  assert.equal(generateShortCode().length, 8);
+
+  const app = express();
+  app.use(shortRsvpRouter);
+  app.use(guestListRouter);
+  const server = http.createServer(app);
+  await new Promise<void>((resolve, reject) => {
+    server.listen(0, async () => {
+      const address = server.address();
+      const port = typeof address === 'object' && address ? address.port : 0;
+      try {
+        const res = await fetch(`http://127.0.0.1:${port}/r/${event.short_code}`);
+        assert.equal(res.status, 200);
+        assert.match(await res.text(), /You're Invited!/);
+        const guestRes = await fetch(
+          `http://127.0.0.1:${port}${guestListShortPagePath(OWNER, event.id)}`,
+        );
+        assert.equal(guestRes.status, 200);
+        server.close((err) => (err ? reject(err) : resolve()));
+      } catch (error) {
+        server.close(() => reject(error));
+      }
+    });
   });
 });

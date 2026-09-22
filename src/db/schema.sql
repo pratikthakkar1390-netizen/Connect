@@ -176,6 +176,18 @@ CREATE TABLE IF NOT EXISTS event_when_codes (
 CREATE INDEX IF NOT EXISTS idx_event_when_codes_expires
   ON event_when_codes (expires_at);
 
+CREATE TABLE IF NOT EXISTS guest_list_codes (
+  short_code TEXT PRIMARY KEY,
+  token TEXT NOT NULL,
+  event_id INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_guest_list_codes_expires
+  ON guest_list_codes (expires_at);
+CREATE INDEX IF NOT EXISTS idx_guest_list_codes_event
+  ON guest_list_codes (event_id);
+
 CREATE TABLE IF NOT EXISTS vendors (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   whatsapp_phone TEXT NOT NULL UNIQUE,

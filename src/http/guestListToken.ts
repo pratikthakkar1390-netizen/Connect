@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { getPublicBaseUrl, normalizePhone } from '../config.js';
+import { allocateGuestListShortCode } from '../db/store.js';
 
 export interface GuestListPayload {
   phone: string;
@@ -89,7 +90,7 @@ export function verifyGuestListToken(
   }
 }
 
-export function guestListPagePath(
+export function guestListLongPagePath(
   phone: string,
   eventId: number,
   nowMs = Date.now(),
@@ -97,12 +98,34 @@ export function guestListPagePath(
   return `/guests/${encodeURIComponent(signGuestListToken(phone, eventId, nowMs))}`;
 }
 
+export function guestListPagePath(
+  phone: string,
+  eventId: number,
+  nowMs = Date.now(),
+): string {
+  return guestListLongPagePath(phone, eventId, nowMs);
+}
+
+export function guestListShortPagePath(
+  phone: string,
+  eventId: number,
+  nowMs = Date.now(),
+): string {
+  const token = signGuestListToken(phone, eventId, nowMs);
+  const code = allocateGuestListShortCode(
+    token,
+    eventId,
+    nowMs + GUEST_LIST_TOKEN_TTL_MS,
+  );
+  return `/g/${encodeURIComponent(code)}`;
+}
+
 export function guestListPageUrl(
   phone: string,
   eventId: number,
   nowMs = Date.now(),
 ): string {
-  return `${getPublicBaseUrl()}${guestListPagePath(phone, eventId, nowMs)}`;
+  return `${getPublicBaseUrl()}${guestListShortPagePath(phone, eventId, nowMs)}`;
 }
 
 export function guestDetailPagePath(

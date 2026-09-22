@@ -61,7 +61,7 @@ app.listen(config.port, () => {
   console.log(`Event timezone picker: GET|POST /tz/:token`);
   console.log(`Vendor pickup picker: GET|POST /pickup/:token`);
   console.log(`My Events delete: GET|POST /e/:code and /my-events/:token`);
-  console.log(`Guest list: GET /guests/:token and GET /guests/:token/g/:guestId`);
+  console.log(`Guest list: GET /g/:code and GET /guests/:token`);
   if (isAdminEnabled()) {
     console.log(`Admin dashboard: GET /admin (Basic Auth)`);
   }

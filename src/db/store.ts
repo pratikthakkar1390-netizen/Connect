@@ -345,6 +345,7 @@ export function getDb(): Database.Database {
   ensureEventImageColumn(db);
   ensureEventTimezoneColumns(db);
   ensureEventWhenCodeTable(db);
+  ensureGuestListCodeTable(db);
   ensureConnectFollowUpColumns(db);
   ensureEventUpdateTables(db);
   ensureVendorTables(db);
@@ -357,6 +358,7 @@ const RSVP_TOKEN_ATTEMPTS = 8;
 const RSVP_CODE_LENGTH = 8;
 const RSVP_CODE_ATTEMPTS = 8;
 const SHORT_CODE_LENGTH = 8;
+const GUEST_LIST_CODE_LENGTH = 6;
 const SHORT_CODE_ATTEMPTS = 8;
 const ACK_TOKEN_BYTES = 16;
 const ACK_TOKEN_ATTEMPTS = 8;
@@ -379,6 +381,16 @@ export function generateRsvpCode(): string {
 /** URL short code: 8+ Crockford chars from cryptographically random bytes. */
 export function generateShortCode(): string {
   const bytes = crypto.randomBytes(SHORT_CODE_LENGTH);
+  let code = '';
+  for (const byte of bytes) {
+    code += CROCKFORD32[byte % 32];
+  }
+  return code;
+}
+
+/** Guest List short code: 6 Crockford chars. Separate from RSVP 8-char codes. */
+export function generateGuestListShortCode(): string {
+  const bytes = crypto.randomBytes(GUEST_LIST_CODE_LENGTH);
   let code = '';
   for (const byte of bytes) {
     code += CROCKFORD32[byte % 32];
@@ -1374,6 +1386,103 @@ export function lookupEventWhenTokenByShortCode(
     return null;
   }
   return row.token;
+}
+
+/** Additive Guest List short codes. HMAC tokens stay the source of truth. */
+export function ensureGuestListCodeTable(
+  database: Database.Database = getDb(),
+): void {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS guest_list_codes (
+      short_code TEXT PRIMARY KEY,
+      token TEXT NOT NULL,
+      event_id INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_guest_list_codes_expires
+      ON guest_list_codes (expires_at);
+    CREATE INDEX IF NOT EXISTS idx_guest_list_codes_event
+      ON guest_list_codes (event_id);
+  `);
+}
+
+function guestListShortCodeExists(
+  database: Database.Database,
+  code: string,
+): boolean {
+  try {
+    return Boolean(
+      database
+        .prepare(
+          `SELECT 1 FROM guest_list_codes WHERE lower(short_code) = lower(?) LIMIT 1`,
+        )
+        .get(code),
+    );
+  } catch {
+    return false;
+  }
+}
+
+function purgeExpiredGuestListCodes(
+  database: Database.Database,
+  nowMs = Date.now(),
+): void {
+  database
+    .prepare(`DELETE FROM guest_list_codes WHERE expires_at <= ?`)
+    .run(nowMs);
+}
+
+export function allocateGuestListShortCode(
+  token: string,
+  eventId: number,
+  expiresAt: number,
+  database: Database.Database = getDb(),
+): string {
+  ensureGuestListCodeTable(database);
+  purgeExpiredGuestListCodes(database);
+  const insert = database.prepare(
+    `INSERT INTO guest_list_codes (short_code, token, event_id, expires_at)
+     VALUES (?, ?, ?, ?)`,
+  );
+  for (let attempt = 0; attempt < SHORT_CODE_ATTEMPTS; attempt++) {
+    const code = generateGuestListShortCode();
+    if (guestListShortCodeExists(database, code)) {
+      continue;
+    }
+    try {
+      insert.run(code, token, eventId, expiresAt);
+      return code;
+    } catch (error) {
+      if (attempt === SHORT_CODE_ATTEMPTS - 1 || !isShortCodeUniqueError(error)) {
+        throw error;
+      }
+    }
+  }
+  throw new Error('Failed to allocate a unique guest-list short code');
+}
+
+export function lookupGuestListByShortCode(
+  code: string,
+  nowMs = Date.now(),
+  database: Database.Database = getDb(),
+): { token: string; eventId: number } | null {
+  ensureGuestListCodeTable(database);
+  const trimmed = code.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const row = database
+    .prepare(
+      `SELECT token, event_id, expires_at FROM guest_list_codes
+       WHERE lower(short_code) = lower(?) LIMIT 1`,
+    )
+    .get(trimmed) as
+    | { token: string; event_id: number; expires_at: number }
+    | undefined;
+  if (!row || row.expires_at <= nowMs) {
+    return null;
+  }
+  return { token: row.token, eventId: row.event_id };
 }
 
 export function getEffectiveAdultCount(rsvp: Rsvp): number {
