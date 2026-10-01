@@ -1,4 +1,4 @@
-import { Router, type Request, type Response } from 'express';
+import express, { Router, type Request, type Response } from 'express';
 import {
   buildGuestListEntries,
   formatGuestListSummary,
@@ -6,11 +6,16 @@ import {
   loadOwnedEventForGuestList,
   searchGuestListEntries,
 } from '../commands/guestList.js';
+import {
+  sendGuestListInvitation,
+  sendGuestListReminder,
+} from '../commands/guestMessaging.js';
 import { lookupGuestListByShortCode, type Event } from '../db/store.js';
 import { renderGuestDetailPage, renderGuestListPage, renderInvalidGuestListPage } from './guestListPage.js';
 import { verifyGuestListToken, type GuestListPayload } from './guestListToken.js';
 
 export const guestListRouter = Router();
+guestListRouter.use(express.urlencoded({ extended: false }));
 
 function formScalar(value: unknown): string {
   const raw = Array.isArray(value) ? value[value.length - 1] : value;
@@ -76,6 +81,7 @@ function handleDetail(
   res: Response,
   resolved: { payload: GuestListPayload; event: Event } | null,
   tokenPath: string,
+  notice?: { ok: boolean; text: string },
 ): void {
   if (!resolved) {
     sendInvalid(res);
@@ -96,8 +102,40 @@ function handleDetail(
       event: resolved.event,
       entry,
       tokenPath,
+      notice,
     }),
   );
+}
+
+async function handleGuestMessagePost(
+  req: Request,
+  res: Response,
+  resolved: { payload: GuestListPayload; event: Event } | null,
+  tokenPath: string,
+  kind: 'invite' | 'reminder',
+): Promise<void> {
+  if (!resolved) {
+    sendInvalid(res);
+    return;
+  }
+  const guestId = Number(req.params.guestId);
+  if (!Number.isInteger(guestId) || guestId < 1) {
+    sendInvalid(res);
+    return;
+  }
+  const entry = getGuestListEntry(resolved.event.id, guestId);
+  if (!entry) {
+    sendInvalid(res);
+    return;
+  }
+  const result =
+    kind === 'invite'
+      ? await sendGuestListInvitation(resolved.event, entry)
+      : await sendGuestListReminder(resolved.event, entry);
+  handleDetail(req, res, resolved, tokenPath, {
+    ok: result.ok,
+    text: result.message,
+  });
 }
 
 guestListRouter.get('/g/:code', (req, res) => {
@@ -120,6 +158,28 @@ guestListRouter.get('/g/:code/g/:guestId', (req, res) => {
   );
 });
 
+guestListRouter.post('/g/:code/g/:guestId/resend', (req, res) => {
+  const code = String(req.params.code ?? '');
+  void handleGuestMessagePost(
+    req,
+    res,
+    resolveFromShortCode(code),
+    `/g/${encodeURIComponent(code)}`,
+    'invite',
+  );
+});
+
+guestListRouter.post('/g/:code/g/:guestId/remind', (req, res) => {
+  const code = String(req.params.code ?? '');
+  void handleGuestMessagePost(
+    req,
+    res,
+    resolveFromShortCode(code),
+    `/g/${encodeURIComponent(code)}`,
+    'reminder',
+  );
+});
+
 guestListRouter.get('/guests/:token', (req, res) => {
   const token = String(req.params.token ?? '');
   handleList(
@@ -137,5 +197,27 @@ guestListRouter.get('/guests/:token/g/:guestId', (req, res) => {
     res,
     resolveFromToken(token),
     `/guests/${encodeURIComponent(token)}`,
+  );
+});
+
+guestListRouter.post('/guests/:token/g/:guestId/resend', (req, res) => {
+  const token = String(req.params.token ?? '');
+  void handleGuestMessagePost(
+    req,
+    res,
+    resolveFromToken(token),
+    `/guests/${encodeURIComponent(token)}`,
+    'invite',
+  );
+});
+
+guestListRouter.post('/guests/:token/g/:guestId/remind', (req, res) => {
+  const token = String(req.params.token ?? '');
+  void handleGuestMessagePost(
+    req,
+    res,
+    resolveFromToken(token),
+    `/guests/${encodeURIComponent(token)}`,
+    'reminder',
   );
 });

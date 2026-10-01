@@ -2,11 +2,12 @@ import { esc, formatDateTime } from '../admin/html.js';
 import {
   formatGuestListRow,
   guestDisplayName,
+  guestStatusEmoji,
   guestStatusLabel,
   guestWhatsAppDisplay,
   type GuestListEntry,
 } from '../commands/guestList.js';
-import type { Event } from '../db/store.js';
+import { isEventCancelled, type Event } from '../db/store.js';
 import { renderConnectLayout } from './rsvpPage.js';
 
 const PAGE_CSS = `
@@ -54,6 +55,16 @@ const PAGE_CSS = `
   white-space: pre-line;
 }
 .detail p { margin: 0.35rem 0; }
+.guest-actions { margin-top: 1.1rem; display: grid; gap: 0.65rem; }
+.guest-actions button { width: 100%; }
+.flash {
+  margin: 0 0 0.85rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 0.75rem;
+  font-weight: 650;
+}
+.flash-ok { background: #ecfdf3; color: #166534; }
+.flash-err { background: #fef2f2; color: #991b1b; }
 .back { display: inline-block; margin-top: 1rem; }
 </style>`;
 
@@ -108,6 +119,7 @@ export function renderGuestDetailPage(state: {
   event: Event;
   entry: GuestListEntry;
   tokenPath: string;
+  notice?: { ok: boolean; text: string };
 }): string {
   const extra: string[] = [];
   if (state.entry.invitationType === 'family') {
@@ -130,16 +142,38 @@ export function renderGuestDetailPage(state: {
     <section class="card">
       <p class="eyebrow">👤</p>
       <h1 class="event-name">${esc(guestDisplayName(state.entry))}</h1>
+      ${
+        state.notice
+          ? `<p class="flash ${state.notice.ok ? 'flash-ok' : 'flash-err'}">${esc(state.notice.text)}</p>`
+          : ''
+      }
       <div class="detail">
-        <p>Status: ${esc(guestStatusLabel(state.entry.status))}</p>
+        <p>Status: ${esc(`${guestStatusEmoji(state.entry.status)} ${guestStatusLabel(state.entry.status)}`)}</p>
         <p>WhatsApp: ${esc(guestWhatsAppDisplay(state.entry))}</p>
         <p>Adults: ${adults}</p>
         <p>Children: ${children}</p>
         <p>Total: ${total}</p>
         <p>Invited: ${esc(state.entry.invitedAt ? formatDateTime(state.entry.invitedAt) : '—')}</p>
         <p>Responded: ${esc(state.entry.respondedAt ? formatDateTime(state.entry.respondedAt) : '—')}</p>
+        ${
+          state.entry.status !== 'awaiting'
+            ? '<p>Resending an invitation or reminder does not change their current RSVP.</p>'
+            : ''
+        }
         ${extra.map((line) => `<p>${esc(line)}</p>`).join('')}
       </div>
+      ${
+        !isEventCancelled(state.event)
+          ? `<div class="guest-actions">
+        <form method="post" action="${esc(`${state.tokenPath}/g/${state.entry.guestId}/resend`)}">
+          <button class="btn btn-primary" type="submit">📩 Resend Invitation</button>
+        </form>
+        <form method="post" action="${esc(`${state.tokenPath}/g/${state.entry.guestId}/remind`)}">
+          <button class="btn" type="submit">🔔 Send Reminder</button>
+        </form>
+      </div>`
+          : ''
+      }
       <a class="back" href="${esc(state.tokenPath)}">← Guest List</a>
     </section>`;
   return renderConnectLayout(

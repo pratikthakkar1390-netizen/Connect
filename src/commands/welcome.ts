@@ -37,6 +37,14 @@ import {
   parseGuestDetailAction,
 } from './guestList.js';
 import {
+  RESEND_INVITE,
+  SEND_REMINDER,
+  guestMessagingButtons,
+  parseGuestPairAction,
+  sendGuestListInvitation,
+  sendGuestListReminder,
+} from './guestMessaging.js';
+import {
   handleSaveConnectContact,
   isSaveConnectContactCommand,
 } from './saveContact.js';
@@ -522,7 +530,34 @@ async function handleGuestDetail(
     await reply(ctx, 'That guest was not found on this event.');
     return;
   }
-  await reply(ctx, formatGuestDetailsMessage(entry));
+  await reply(
+    ctx,
+    formatGuestDetailsMessage(entry),
+    guestMessagingButtons(event, entry),
+  );
+}
+
+async function handleGuestMessaging(
+  ctx: CommandContext,
+  eventId: number,
+  guestId: number,
+  kind: 'invite' | 'reminder',
+): Promise<void> {
+  const event = loadOwnedEventForGuestList(eventId, ctx.phone);
+  if (!event) {
+    await denyAccess(ctx);
+    return;
+  }
+  const entry = getGuestListEntry(event.id, guestId);
+  if (!entry) {
+    await reply(ctx, 'That guest was not found on this event.');
+    return;
+  }
+  const result =
+    kind === 'invite'
+      ? await sendGuestListInvitation(event, entry)
+      : await sendGuestListReminder(event, entry);
+  await reply(ctx, result.message, guestMessagingButtons(event, entry));
 }
 
 async function handleMoreEvent(ctx: CommandContext, eventId: number): Promise<void> {
@@ -748,6 +783,28 @@ export async function handleCustomerCommand(
       return true;
     }
     await handleGuestList(ctx, selected.eventId);
+    return true;
+  }
+
+  const resendInvite = parseGuestPairAction(trimmed, RESEND_INVITE);
+  if (resendInvite) {
+    await handleGuestMessaging(
+      ctx,
+      resendInvite.eventId,
+      resendInvite.guestId,
+      'invite',
+    );
+    return true;
+  }
+
+  const sendReminder = parseGuestPairAction(trimmed, SEND_REMINDER);
+  if (sendReminder) {
+    await handleGuestMessaging(
+      ctx,
+      sendReminder.eventId,
+      sendReminder.guestId,
+      'reminder',
+    );
     return true;
   }
 

@@ -287,7 +287,7 @@ export function formatGuestDetailsMessage(entry: GuestListEntry): string {
   const lines = [
     `👤 ${guestDisplayName(entry)}`,
     '',
-    `Status: ${STATUS_LABEL[entry.status]}`,
+    `Status: ${STATUS_EMOJI[entry.status]} ${STATUS_LABEL[entry.status]}`,
     '',
     `WhatsApp: ${guestWhatsAppDisplay(entry)}`,
     '',
@@ -298,6 +298,12 @@ export function formatGuestDetailsMessage(entry: GuestListEntry): string {
     `Invited: ${entry.invitedAt ? formatDateTime(entry.invitedAt) : '—'}`,
     `Responded: ${entry.respondedAt ? formatDateTime(entry.respondedAt) : '—'}`,
   ];
+  if (entry.status !== 'awaiting') {
+    lines.push(
+      '',
+      'Resending an invitation or reminder does not change their current RSVP.',
+    );
+  }
   if (entry.invitationType === 'family') {
     const max = entry.maxGuests != null ? ` (max ${entry.maxGuests})` : '';
     lines.push(

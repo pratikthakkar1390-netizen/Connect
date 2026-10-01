@@ -218,7 +218,7 @@ test('guest details show RSVP information including family invitation type', asy
   assert.ok(johnEntry);
   const details = formatGuestDetailsMessage(johnEntry);
   assert.match(details, /👤 John Patel/);
-  assert.match(details, /Status: Yes/);
+  assert.match(details, /Status: ✅ Yes/);
   assert.match(details, /Adults: 2/);
   assert.match(details, /Children: 1/);
   assert.match(details, /Total: 3/);
@@ -229,8 +229,12 @@ test('guest details show RSVP information including family invitation type', asy
     listTap(OWNER, guestDetailRowId(event.id, priya.id)),
   );
   assert.match(lastMessage().message, /👤 Priya Shah/);
-  assert.match(lastMessage().message, /Status: Awaiting/);
+  assert.match(lastMessage().message, /Status: ⏳ Awaiting/);
   assert.match(lastMessage().message, /Invitation: Family — Shah Family \(max 4\)/);
+  assert.deepEqual(
+    lastMessage().buttons?.map((row) => row.title),
+    ['Resend Invitation', 'Send Reminder'],
+  );
   assert.equal(family.max_guests, 4);
 
   await withGuestListServer(async (baseUrl) => {
@@ -254,23 +258,28 @@ test('guest details show RSVP information including family invitation type', asy
     assert.equal(detailRes.status, 200);
     const detailHtml = await detailRes.text();
     assert.match(detailHtml, /John Patel/);
-    assert.match(detailHtml, /Status: Yes/);
+    assert.match(detailHtml, /Status: ✅ Yes/);
     assert.match(detailHtml, /Adults: 2/);
     assert.match(detailHtml, /Children: 1/);
+    assert.match(detailHtml, /Resend Invitation/);
+    assert.match(detailHtml, /Send Reminder/);
+    assert.doesNotMatch(detailHtml, /Remove Guest/);
+    assert.doesNotMatch(detailHtml, /Edit Guest/);
   });
 });
 
 test('existing RSVP recording is unchanged after Guest List reads', async () => {
+  const guest = '+15552229991';
   const event = createEvent('Picnic', 'July 4', 'Park', OWNER, {
     childrenAllowed: true,
   });
   const invite = createInvitation({ eventId: event.id, type: 'individual' });
-  addGuests(event.id, [JOHN], invite.id);
+  addGuests(event.id, [guest], invite.id);
 
   const first = await handleGuestRsvp({
-    phone: JOHN,
+    phone: guest,
     text: 'yes',
-    conversationId: 'conv-john',
+    conversationId: 'conv-picnic-guest',
     accountId: 'acct-rsvp',
     rawReply: 'yes',
     senderName: 'John Patel',
@@ -278,15 +287,15 @@ test('existing RSVP recording is unchanged after Guest List reads', async () => 
   assert.equal(first, 'awaiting_counts');
 
   const recorded = await handleGuestRsvp({
-    phone: JOHN,
+    phone: guest,
     text: '2 adults 1 child',
-    conversationId: 'conv-john',
+    conversationId: 'conv-picnic-guest',
     accountId: 'acct-rsvp',
     rawReply: '2 adults 1 child',
     senderName: 'John Patel',
   });
   assert.equal(recorded, 'rsvp_recorded');
-  const rsvp = getRsvp(event.id, JOHN);
+  const rsvp = getRsvp(event.id, guest);
   assert.equal(rsvp?.status, 'yes');
   assert.equal(rsvp?.adult_count, 2);
   assert.equal(rsvp?.child_count, 1);
@@ -294,7 +303,7 @@ test('existing RSVP recording is unchanged after Guest List reads', async () => 
   const entries = buildGuestListEntries(event.id);
   assert.equal(entries[0]?.status, 'yes');
   assert.equal(entries[0]?.adultCount, 2);
-  assert.equal(getRsvp(event.id, JOHN)?.adult_count, 2);
+  assert.equal(getRsvp(event.id, guest)?.adult_count, 2);
 });
 
 test('soft-deleted events stay hidden from Guest List', async () => {
@@ -361,7 +370,7 @@ test('authorized organizer can open /g/XXXXXX; search and details still work', a
 
     const detailRes = await fetch(`${baseUrl}${path}/g/${john.id}`);
     assert.equal(detailRes.status, 200);
-    assert.match(await detailRes.text(), /Status: Yes/);
+    assert.match(await detailRes.text(), /Status: ✅ Yes/);
   });
 });
 
