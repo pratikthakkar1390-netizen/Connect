@@ -1,6 +1,7 @@
 import express from 'express';
 import { config, assertConfigForRuntime } from './config.js';
 import { getDb, sweepAbandonedEventImages } from './db/store.js';
+import { startSqliteBackupScheduler } from './db/backup.js';
 import { handleZernioWebhook } from './webhooks/zernio.js';
 import { shortRsvpRouter } from './http/shortRsvp.js';
 import { ackUpdateRouter } from './http/ackUpdate.js';
@@ -66,4 +67,6 @@ app.listen(config.port, () => {
     console.log(`Admin dashboard: GET /admin (Basic Auth)`);
   }
   startReminderScheduler();
+  // Opt-in same-volume SQLite snapshots only. Not off-machine disaster recovery.
+  startSqliteBackupScheduler();
 });
