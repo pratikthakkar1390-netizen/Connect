@@ -152,7 +152,7 @@ test('vendor menu routing and coming soon items', async () => {
   const handled = await handleCustomerCommand(ctx(PHONE, 'VENDOR'));
   assert.equal(handled, true);
   assert.equal(isVendorConversationState(getConversationState(PHONE)?.state), true);
-  assert.match(sent.at(-1)?.message ?? '', /CONNECT Vendor/);
+  assert.match(sent.at(-1)?.message ?? '', /ZipBite Provider/);
   assert.ok(sent.at(-1)?.list);
 
   await tap(PHONE, 'VENDOR_INQUIRIES', true);
@@ -179,7 +179,7 @@ test('incoming normalized text VENDOR routes to the vendor menu', async () => {
   const handled = await handleOrganizerCommand(ctx(phone, 'VENDOR'));
   assert.equal(handled, true);
   const last = sent.at(-1);
-  assert.match(last?.message ?? '', /🏪 CONNECT Vendor/);
+  assert.match(last?.message ?? '', /🏪 ZipBite Provider/);
   const menuIds = last?.list?.sections[0]?.rows.map((row) => row.id) ?? [];
   assert.deepEqual(menuIds, [
     'VENDOR_REGISTER',
@@ -404,7 +404,7 @@ test('vendor state is isolated from RSVP and event creation', async () => {
   const vendorFromEvent = await handleCustomerCommand(ctx(guestPhone, 'VENDOR'));
   assert.equal(vendorFromEvent, true);
   assert.equal(getConversationState(guestPhone)?.state, 'VENDOR_MENU');
-  assert.match(sent.at(-1)?.message ?? '', /CONNECT Vendor/);
+  assert.match(sent.at(-1)?.message ?? '', /ZipBite Provider/);
 
   const guestRsvp = await handleGuestRsvp({
     phone: guestPhone,
@@ -437,7 +437,7 @@ function assertConnectWelcome(message: SendMessageParams | undefined): void {
   assert.ok(message);
   assert.match(message.message, /Welcome to CONNECT/);
   assert.match(message.message, /Moments to Memory/);
-  assert.doesNotMatch(message.message, /CONNECT Vendor/);
+  assert.doesNotMatch(message.message, /ZipBite Provider/);
   assert.doesNotMatch(message.message, /What is your business name/);
   assert.doesNotMatch(message.message, /Suggested name:/);
   assert.deepEqual(
@@ -562,7 +562,7 @@ test('stale VENDOR list payload after hi does not re-enter Vendor', async () => 
   const again = await handleCustomerCommand(ctx(phone, 'VENDOR'));
   assert.equal(again, true);
   assert.equal(getConversationState(phone)?.state, 'VENDOR_MENU');
-  assert.match(sent.at(-1)?.message ?? '', /CONNECT Vendor/);
+  assert.match(sent.at(-1)?.message ?? '', /ZipBite Provider/);
 });
 
 test('valid current Catering selection advances to business name', async () => {

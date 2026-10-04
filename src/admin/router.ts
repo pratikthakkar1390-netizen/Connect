@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import express, { Router, type Response } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,10 +24,20 @@ import {
   listAdminFailedSends,
   listAdminFeed,
 } from '../db/store.js';
+import { renderAdminProviders } from './providerViews.js';
+import {
+  createProviderOnboardingInvite,
+  listProviderOnboardingSessions,
+} from '../vendors/onboarding.js';
+import {
+  listVendorsForAdmin,
+  setVendorStatus,
+} from '../vendors/store.js';
 
 const router = Router();
 
 router.use(requireAdminAuth);
+router.use(express.urlencoded({ extended: false }));
 
 const stylesPath = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -49,6 +59,53 @@ router.get(['/', ''], (_req, res) => {
   res
     .type('html')
     .send(renderHome(health, getAdminOverviewStats(), listAdminFeed(12)));
+});
+
+function sendProvidersPage(
+  res: Response,
+  options: { inviteUrl?: string; error?: string } = {},
+): void {
+  noStore(res);
+  res.type('html').send(
+    renderAdminProviders({
+      health: getAdminHealth(),
+      vendors: listVendorsForAdmin(),
+      sessions: listProviderOnboardingSessions(),
+      ...options,
+    }),
+  );
+}
+
+router.get('/providers', (_req, res) => {
+  sendProvidersPage(res);
+});
+
+router.post('/providers/invites', (req, res) => {
+  try {
+    const invite = createProviderOnboardingInvite({
+      phone: String(req.body?.phone ?? ''),
+    });
+    sendProvidersPage(res, { inviteUrl: invite.url });
+  } catch (error) {
+    res.status(400);
+    sendProvidersPage(res, {
+      error: error instanceof Error ? error.message : 'Could not create invite.',
+    });
+  }
+});
+
+router.post('/providers/:id/status', (req, res) => {
+  const id = Number(req.params.id);
+  const status = String(req.body?.status ?? '');
+  if (
+    !Number.isInteger(id) ||
+    !['APPROVED', 'REJECTED'].includes(status) ||
+    !setVendorStatus(id, status as 'APPROVED' | 'REJECTED')
+  ) {
+    res.status(404).send('Not Found');
+    return;
+  }
+  res.redirect('/admin/providers');
 });
 
 router.get('/events', (req, res) => {

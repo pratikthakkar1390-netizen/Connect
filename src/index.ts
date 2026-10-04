@@ -8,6 +8,7 @@ import { ackUpdateRouter } from './http/ackUpdate.js';
 import { eventWhenRouter } from './http/eventWhen.js';
 import { eventTimezoneRouter } from './http/eventTimezone.js';
 import { vendorPickupRouter } from './http/vendorPickup.js';
+import { providerOnboardingRouter } from './http/providerOnboarding.js';
 import { eventImageRouter } from './http/eventImage.js';
 import { myEventsRouter } from './http/myEvents.js';
 import { guestListRouter } from './http/guestList.js';
@@ -38,6 +39,7 @@ app.use(eventImageRouter);
 app.use(eventWhenRouter);
 app.use(eventTimezoneRouter);
 app.use(vendorPickupRouter);
+app.use(providerOnboardingRouter);
 app.use(myEventsRouter);
 app.use(guestListRouter);
 
@@ -61,6 +63,7 @@ app.listen(config.port, () => {
   console.log(`Event when picker: GET|POST /d/:code and /when/:token`);
   console.log(`Event timezone picker: GET|POST /tz/:token`);
   console.log(`Vendor pickup picker: GET|POST /pickup/:token`);
+  console.log(`Provider onboarding: GET /provider/onboard/:token`);
   console.log(`My Events delete: GET|POST /e/:code and /my-events/:token`);
   console.log(`Guest list: GET /g/:code and GET /guests/:token`);
   if (isAdminEnabled()) {

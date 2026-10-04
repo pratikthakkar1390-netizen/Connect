@@ -136,7 +136,7 @@ test('CONNECT account + Hi sends CONNECT Welcome', async () => {
   );
   assert.ok(welcome, 'expected CONNECT Welcome');
   assert.equal(welcome.accountId, CONNECT_ACCOUNT);
-  assert.doesNotMatch(welcome.message, /CONNECT Vendor/);
+  assert.doesNotMatch(welcome.message, /ZipBite Provider/);
 });
 
 test('vendor account + Hi enters that vendor automation, not CONNECT Welcome', async () => {

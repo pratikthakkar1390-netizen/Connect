@@ -702,6 +702,13 @@ export async function handleCustomerCommand(
     !isButtonCallback(ctx) &&
     (isGreeting(ctx.text) || isGreeting(trimmed))
   ) {
+    const { getActiveProviderOnboardingSession } = await import(
+      '../vendors/onboarding.js'
+    );
+    if (getActiveProviderOnboardingSession(ctx.phone)) {
+      const { handleVendorCommand } = await import('../vendors/flow.js');
+      return handleVendorCommand(ctx);
+    }
     await routeToConnectWelcome(ctx);
     return true;
   }

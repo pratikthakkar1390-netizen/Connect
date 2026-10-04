@@ -480,7 +480,7 @@ test('CONNECT RSVP data and unknown-account safety remain intact', async () => {
   assert.match(sent.at(-1)?.message ?? '', /🛍️ Shop/);
   assert.ok(sent.at(-1)?.buttons?.some((button) => button.title === '🛍️ Shop'));
   await handleVendorAccountInbound(ctx(OPERATOR, 'Hi'), vendor);
-  assert.match(sent.at(-1)?.message ?? '', /CONNECT Vendor/);
+  assert.match(sent.at(-1)?.message ?? '', /ZipBite Provider/);
   assert.equal(
     sent.at(-1)?.buttons?.some((button) => button.title === '🛍️ Shop') ?? false,
     false,

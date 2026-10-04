@@ -201,6 +201,12 @@ CREATE TABLE IF NOT EXISTS vendors (
   pricing TEXT,
   status TEXT NOT NULL DEFAULT 'DRAFT',
   zernio_whatsapp_account_id TEXT,
+  provider_type TEXT,
+  menu_source_method TEXT,
+  ordering_frequency TEXT,
+  payment_preference TEXT,
+  onboarding_completed_at TEXT,
+  onboarding_source TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -233,6 +239,23 @@ CREATE TABLE IF NOT EXISTS vendor_availability (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS vendor_onboarding_sessions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  token_hash TEXT NOT NULL UNIQUE,
+  expected_phone TEXT NOT NULL,
+  vendor_id INTEGER REFERENCES vendors(id) ON DELETE SET NULL,
+  step TEXT NOT NULL DEFAULT 'AWAITING_CLAIM',
+  draft_json TEXT,
+  expires_at INTEGER NOT NULL,
+  claimed_at TEXT,
+  completed_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_vendor_onboarding_phone
+  ON vendor_onboarding_sessions (expected_phone, completed_at, expires_at);
 
 CREATE TABLE IF NOT EXISTS vendor_orders (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

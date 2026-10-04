@@ -36,6 +36,10 @@ import {
   type Vendor,
 } from './store.js';
 import {
+  handleProviderOnboarding,
+  shouldHandleProviderOnboarding,
+} from './onboardingFlow.js';
+import {
   handleCustomerOrderInbound,
   handleVendorOrderCommand,
   releasePendingVendorOrderNotifications,
@@ -76,6 +80,8 @@ const VENDOR_COMMANDS = new Set([
   'VENDORS',
   'CONNECT VENDOR',
   'CONNECT_VENDOR',
+  'ZIPBITE VENDOR',
+  'ZIPBITE_VENDOR',
   'VENDOR_HOME',
   'VENDOR_MENU',
 ]);
@@ -120,7 +126,8 @@ export function isVendorEntryText(input: string): boolean {
   return (
     upper === 'VENDOR' ||
     upper === 'VENDORS' ||
-    upper === 'CONNECT VENDOR'
+    upper === 'CONNECT VENDOR' ||
+    upper === 'ZIPBITE VENDOR'
   );
 }
 
@@ -138,6 +145,9 @@ export function shouldHandleVendor(
   input: string,
   accountId?: string,
 ): boolean {
+  if (shouldHandleProviderOnboarding(phone, input)) {
+    return true;
+  }
   if (isVendorEntryText(input)) {
     return true;
   }
@@ -243,7 +253,7 @@ function vendorMenuList(): { button: string; sections: InboxListSection[] } {
 }
 
 async function sendVendorHome(ctx: CommandContext): Promise<boolean> {
-  const sent = await reply(ctx, '🏪 CONNECT Vendor', undefined, vendorMenuList());
+  const sent = await reply(ctx, '🏪 ZipBite Provider', undefined, vendorMenuList());
   if (!sent) {
     return false;
   }
@@ -581,6 +591,13 @@ export async function handleVendorAccountInbound(
 }
 
 export async function handleVendorCommand(ctx: CommandContext): Promise<boolean> {
+  if (
+    await handleProviderOnboarding(ctx, (message, buttons, list) =>
+      reply(ctx, message, buttons, list),
+    )
+  ) {
+    return true;
+  }
   const input = interactiveCommandInput(ctx);
   const trimmed = input.trim();
   const upper = trimmed.toUpperCase();

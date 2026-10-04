@@ -132,7 +132,7 @@ test('operator on vendor account does not get customer Shop flow', async () => {
   const vendor = setupVendor();
   await handleVendorAccountInbound(ctx(OPERATOR, 'Hi'), vendor);
   const last = sent.at(-1);
-  assert.match(last?.message ?? '', /CONNECT Vendor/);
+  assert.match(last?.message ?? '', /ZipBite Provider/);
   assert.equal(
     last?.buttons?.some((button) => button.title === '🛍️ Shop') ?? false,
     false,

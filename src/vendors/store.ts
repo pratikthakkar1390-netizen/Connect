@@ -22,6 +22,12 @@ export interface Vendor {
   description: string | null;
   pricing: string | null;
   status: VendorStatus;
+  provider_type: string | null;
+  menu_source_method: string | null;
+  ordering_frequency: string | null;
+  payment_preference: string | null;
+  onboarding_completed_at: string | null;
+  onboarding_source: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -243,6 +249,63 @@ export function setVendorStatus(
        RETURNING *`,
     )
     .get(status, id) as Vendor | undefined;
+}
+
+export function completeVendorOnboarding(
+  id: number,
+  input: {
+    businessName: string;
+    contactName: string;
+    address: string;
+    providerType: string;
+    menuSourceMethod: string;
+    orderingFrequency: string;
+    paymentPreference: string;
+  },
+): Vendor | undefined {
+  return getDb()
+    .prepare(
+      `UPDATE vendors
+       SET business_name = ?,
+           contact_name = ?,
+           address = ?,
+           provider_type = ?,
+           menu_source_method = ?,
+           ordering_frequency = ?,
+           payment_preference = ?,
+           onboarding_completed_at = datetime('now'),
+           onboarding_source = 'WHATSAPP_LINK',
+           status = 'UNDER_REVIEW',
+           updated_at = datetime('now')
+       WHERE id = ?
+       RETURNING *`,
+    )
+    .get(
+      input.businessName.trim(),
+      input.contactName.trim(),
+      input.address.trim(),
+      input.providerType,
+      input.menuSourceMethod,
+      input.orderingFrequency,
+      input.paymentPreference,
+      id,
+    ) as Vendor | undefined;
+}
+
+export function listVendorsForAdmin(): Vendor[] {
+  return getDb()
+    .prepare(
+      `SELECT * FROM vendors
+       ORDER BY
+         CASE status
+           WHEN 'UNDER_REVIEW' THEN 0
+           WHEN 'DRAFT' THEN 1
+           ELSE 2
+         END,
+         updated_at DESC,
+         id DESC`,
+    )
+    .all() as Vendor[];
 }
 
 export function getVendorProducts(vendorId: number): VendorProduct[] {

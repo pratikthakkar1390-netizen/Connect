@@ -968,6 +968,12 @@ export function ensureVendorTables(
       description TEXT,
       pricing TEXT,
       status TEXT NOT NULL DEFAULT 'DRAFT',
+      provider_type TEXT,
+      menu_source_method TEXT,
+      ordering_frequency TEXT,
+      payment_preference TEXT,
+      onboarding_completed_at TEXT,
+      onboarding_source TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -996,9 +1002,30 @@ export function ensureVendorTables(
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS vendor_onboarding_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      token_hash TEXT NOT NULL UNIQUE,
+      expected_phone TEXT NOT NULL,
+      vendor_id INTEGER REFERENCES vendors(id) ON DELETE SET NULL,
+      step TEXT NOT NULL DEFAULT 'AWAITING_CLAIM',
+      draft_json TEXT,
+      expires_at INTEGER NOT NULL,
+      claimed_at TEXT,
+      completed_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_vendor_onboarding_phone
+      ON vendor_onboarding_sessions (expected_phone, completed_at, expires_at);
   `);
   ensureColumn(database, 'conversation_states', 'vendor_draft', 'TEXT');
   ensureColumn(database, 'vendors', 'zernio_whatsapp_account_id', 'TEXT');
+  ensureColumn(database, 'vendors', 'provider_type', 'TEXT');
+  ensureColumn(database, 'vendors', 'menu_source_method', 'TEXT');
+  ensureColumn(database, 'vendors', 'ordering_frequency', 'TEXT');
+  ensureColumn(database, 'vendors', 'payment_preference', 'TEXT');
+  ensureColumn(database, 'vendors', 'onboarding_completed_at', 'TEXT');
+  ensureColumn(database, 'vendors', 'onboarding_source', 'TEXT');
   database.exec(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_vendors_zernio_whatsapp_account_id
       ON vendors (zernio_whatsapp_account_id)

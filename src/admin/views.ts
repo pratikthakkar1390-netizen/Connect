@@ -427,6 +427,15 @@ export function renderMore(
     <h1 class="page-title">More</h1>
     <p class="lede">${overallMarkSafe(health)}</p>
     <section class="section">
+      <h2 class="section-title">Business operations</h2>
+      <div class="panel">
+        <a class="list-card" href="/admin/providers">
+          <div class="list-title">Provider onboarding</div>
+          <div class="list-meta">Create secure links and review provider applications</div>
+        </a>
+      </div>
+    </section>
+    <section class="section">
       <h2 class="section-title">System health</h2>
       <div class="panel">${checks}</div>
     </section>
