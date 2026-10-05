@@ -78,6 +78,7 @@ export interface VendorDraft {
 const VENDOR_COMMANDS = new Set([
   'VENDOR',
   'VENDORS',
+  'PROVIDER',
   'CONNECT VENDOR',
   'CONNECT_VENDOR',
   'ZIPBITE VENDOR',
@@ -126,9 +127,14 @@ export function isVendorEntryText(input: string): boolean {
   return (
     upper === 'VENDOR' ||
     upper === 'VENDORS' ||
+    upper === 'PROVIDER' ||
     upper === 'CONNECT VENDOR' ||
     upper === 'ZIPBITE VENDOR'
   );
+}
+
+function isProviderAccountEntryText(input: string): boolean {
+  return normalizeVendorCommandText(input) === 'PROVIDER';
 }
 
 export function isVendorCommand(input: string): boolean {
@@ -252,8 +258,30 @@ function vendorMenuList(): { button: string; sections: InboxListSection[] } {
   };
 }
 
+async function sendProviderAccountHome(ctx: CommandContext): Promise<boolean> {
+  const sent = await reply(
+    ctx,
+    [
+      'ZipNest Provider Account',
+      '',
+      'This is your ZipNest Provider Account.',
+      'Your WhatsApp number is the account identity.',
+      '',
+      'Current service: ZipBite',
+      '',
+      'Open your ZipBite service to manage your menu, availability, and orders.',
+    ].join('\n'),
+    [{ title: '🍴 ZipBite', payload: 'VENDOR_MENU' }],
+  );
+  if (!sent) {
+    return false;
+  }
+  saveState(ctx.phone, 'VENDOR_MENU', readDraft(ctx.phone, ctx.accountId), ctx.accountId);
+  return true;
+}
+
 async function sendVendorHome(ctx: CommandContext): Promise<boolean> {
-  const sent = await reply(ctx, '🏪 ZipBite Provider', undefined, vendorMenuList());
+  const sent = await reply(ctx, '🍴 Your ZipBite service', undefined, vendorMenuList());
   if (!sent) {
     return false;
   }
@@ -615,6 +643,11 @@ export async function handleVendorCommand(ctx: CommandContext): Promise<boolean>
     if (isGreeting(ctx.text) || isGreeting(trimmed)) {
       return false;
     }
+  }
+
+  if (isProviderAccountEntryText(ctx.text) || isProviderAccountEntryText(trimmed)) {
+    await sendProviderAccountHome(ctx);
+    return true;
   }
 
   if (isVendorEntryText(ctx.text) || isVendorEntryText(trimmed)) {

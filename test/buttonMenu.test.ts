@@ -13,9 +13,11 @@ import {
   EVENT_DETAILS,
   HOME,
   HOME_BUTTONS,
+  MAIN_MENU_BUTTONS,
   MORE_EVENT,
   SHARE_RSVP,
   VIEW_OPTIONS,
+  ZIP_EVENTS,
   buildMyEventsReply,
   handleCustomerCommand,
   isHomeCommand,
@@ -159,15 +161,29 @@ test('typed CREATE pipe does not create an event', async () => {
   assert.equal(getConversationState(PHONE), undefined);
 });
 
-test('greeting shows Home buttons instead of View Options', async () => {
+test('greeting shows ZipNest with ZipEvents as the primary action', async () => {
   const handled = await handleCustomerCommand(ctx('Hi'));
   assert.equal(handled, true);
-  assert.match(lastMessage().message, /Welcome to CONNECT/);
-  assertHomeButtons(lastMessage());
+  assert.match(lastMessage().message, /Welcome to ZipNest/);
+  assert.match(lastMessage().message, /🍴 ZipBite — Coming Soon/);
+  assert.match(lastMessage().message, /\nProvider$/);
+  assert.deepEqual(lastMessage().buttons, MAIN_MENU_BUTTONS);
+  assert.equal(
+    lastMessage().buttons?.some((button) => /ZipBite/i.test(button.title)),
+    false,
+  );
   assert.equal(
     lastMessage().buttons?.some((button) => button.payload === VIEW_OPTIONS),
     false,
   );
+});
+
+test('ZipEvents opens the unchanged event menu', async () => {
+  const handled = await handleCustomerCommand(tap(ZIP_EVENTS));
+  assert.equal(handled, true);
+  assert.match(lastMessage().message, /🎉 \*ZipEvents\*/);
+  assert.match(lastMessage().message, /Moments to Memory/);
+  assertHomeButtons(lastMessage());
 });
 
 test('Help is the same for organizers and has no typed commands', async () => {

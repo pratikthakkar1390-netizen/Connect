@@ -917,7 +917,7 @@ test('Hi during update wizard is not stored as the update message', async () => 
   const handled = await handleCustomerCommand(ctx(OWNER, 'Hi'));
   assert.equal(handled, true);
   assert.equal(getConversationState(OWNER), undefined);
-  assert.match(lastMessage().message, /Welcome to CONNECT/);
+  assert.match(lastMessage().message, /Welcome to ZipNest/);
   assert.equal(isEventUpdateFlowState('WAITING_FOR_UPDATE_MESSAGE'), true);
 });
 

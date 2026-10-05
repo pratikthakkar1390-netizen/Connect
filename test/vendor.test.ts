@@ -152,7 +152,7 @@ test('vendor menu routing and coming soon items', async () => {
   const handled = await handleCustomerCommand(ctx(PHONE, 'VENDOR'));
   assert.equal(handled, true);
   assert.equal(isVendorConversationState(getConversationState(PHONE)?.state), true);
-  assert.match(sent.at(-1)?.message ?? '', /ZipBite Provider/);
+  assert.match(sent.at(-1)?.message ?? '', /Your ZipBite service/);
   assert.ok(sent.at(-1)?.list);
 
   await tap(PHONE, 'VENDOR_INQUIRIES', true);
@@ -163,7 +163,7 @@ test('vendor menu routing and coming soon items', async () => {
   assert.match(sent.at(-1)?.message ?? '', /Coming Soon/);
 });
 
-test('incoming normalized text VENDOR routes to the vendor menu', async () => {
+test('incoming Vendor and Provider text route to the provider menu', async () => {
   sent.length = 0;
   setVendorMessageSender(async (params) => {
     sent.push(params);
@@ -175,11 +175,24 @@ test('incoming normalized text VENDOR routes to the vendor menu', async () => {
   const phone = '+15551119910';
   assert.equal(shouldHandleVendor(phone, 'VENDOR'), true);
   assert.equal(shouldHandleVendor(phone, ' vendor '), true);
+  assert.equal(shouldHandleVendor(phone, 'Provider'), true);
 
-  const handled = await handleOrganizerCommand(ctx(phone, 'VENDOR'));
+  const handled = await handleOrganizerCommand(ctx(phone, 'Provider'));
   assert.equal(handled, true);
+  const account = sent.at(-1);
+  assert.match(account?.message ?? '', /ZipNest Provider Account/);
+  assert.match(account?.message ?? '', /Current service: ZipBite/);
+  assert.match(account?.message ?? '', /your ZipBite service/i);
+  assert.doesNotMatch(account?.message ?? '', /ZipBite Provider/);
+  assert.deepEqual(
+    account?.buttons?.map((button) => button.payload),
+    ['VENDOR_MENU'],
+  );
+  assert.equal(getConversationState(phone)?.state, 'VENDOR_MENU');
+
+  await tap(phone, 'VENDOR_MENU');
   const last = sent.at(-1);
-  assert.match(last?.message ?? '', /🏪 ZipBite Provider/);
+  assert.match(last?.message ?? '', /Your ZipBite service/);
   const menuIds = last?.list?.sections[0]?.rows.map((row) => row.id) ?? [];
   assert.deepEqual(menuIds, [
     'VENDOR_REGISTER',
@@ -188,7 +201,6 @@ test('incoming normalized text VENDOR routes to the vendor menu', async () => {
     'VENDOR_AVAILABILITY',
     'VENDOR_ORDERS',
   ]);
-  assert.equal(getConversationState(phone)?.state, 'VENDOR_MENU');
 });
 
 test('catering registration, review, cancel, and submit', async () => {
@@ -404,7 +416,7 @@ test('vendor state is isolated from RSVP and event creation', async () => {
   const vendorFromEvent = await handleCustomerCommand(ctx(guestPhone, 'VENDOR'));
   assert.equal(vendorFromEvent, true);
   assert.equal(getConversationState(guestPhone)?.state, 'VENDOR_MENU');
-  assert.match(sent.at(-1)?.message ?? '', /ZipBite Provider/);
+  assert.match(sent.at(-1)?.message ?? '', /Your ZipBite service/);
 
   const guestRsvp = await handleGuestRsvp({
     phone: guestPhone,
@@ -435,14 +447,15 @@ test('unregistered products and availability prompt registration', async () => {
 
 function assertConnectWelcome(message: SendMessageParams | undefined): void {
   assert.ok(message);
-  assert.match(message.message, /Welcome to CONNECT/);
-  assert.match(message.message, /Moments to Memory/);
+  assert.match(message.message, /Welcome to ZipNest/);
+  assert.match(message.message, /\nProvider$/);
   assert.doesNotMatch(message.message, /ZipBite Provider/);
+  assert.doesNotMatch(message.message, /Your ZipBite service/);
   assert.doesNotMatch(message.message, /What is your business name/);
   assert.doesNotMatch(message.message, /Suggested name:/);
   assert.deepEqual(
     message.buttons?.map((button) => button.payload),
-    ['CREATE_EVENT', 'MY_EVENTS', 'HELP'],
+    ['ZIP_EVENTS'],
   );
 }
 
@@ -562,7 +575,7 @@ test('stale VENDOR list payload after hi does not re-enter Vendor', async () => 
   const again = await handleCustomerCommand(ctx(phone, 'VENDOR'));
   assert.equal(again, true);
   assert.equal(getConversationState(phone)?.state, 'VENDOR_MENU');
-  assert.match(sent.at(-1)?.message ?? '', /ZipBite Provider/);
+  assert.match(sent.at(-1)?.message ?? '', /Your ZipBite service/);
 });
 
 test('valid current Catering selection advances to business name', async () => {

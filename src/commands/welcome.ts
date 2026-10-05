@@ -71,6 +71,7 @@ export const EVENT_DETAILS = 'EVENT_DETAILS';
 export const MORE_EVENT = 'MORE_EVENT';
 export const SHARE_RSVP = 'SHARE_RSVP';
 export const HOME = 'HOME';
+export const ZIP_EVENTS = 'ZIP_EVENTS';
 /** @deprecated Old View Options lobby; still accepted as an alias for HOME. */
 export const VIEW_OPTIONS = 'VIEW_OPTIONS';
 
@@ -134,6 +135,10 @@ export const HOME_BUTTONS = [
   { title: '❓ Help', payload: 'HELP' },
 ];
 
+export const MAIN_MENU_BUTTONS = [
+  { title: '🎉 ZipEvents', payload: ZIP_EVENTS },
+];
+
 const CUSTOMER_HELP_TEXT = `*CONNECT Help*
 
 Create and share events, then track RSVPs right here.
@@ -187,7 +192,14 @@ export function getFirstNameFromDisplayName(displayName?: string): string | unde
 }
 
 export function buildWelcomeMessage(_senderName?: string): string {
-  return `Welcome to CONNECT! 👋\n\n${WELCOME_BODY}`;
+  return `Welcome to ZipNest! 👋
+Your local life, simplified.
+
+🎉 ZipEvents
+
+🍴 ZipBite — Coming Soon
+
+Provider`;
 }
 
 function isEventOwner(event: Event, phone: string): boolean {
@@ -437,7 +449,11 @@ async function sendCustomerHelp(ctx: CommandContext): Promise<void> {
 }
 
 async function sendWelcome(ctx: CommandContext): Promise<void> {
-  await reply(ctx, buildWelcomeMessage(ctx.senderName), HOME_BUTTONS);
+  await reply(ctx, buildWelcomeMessage(ctx.senderName), MAIN_MENU_BUTTONS);
+}
+
+async function sendZipEventsHome(ctx: CommandContext): Promise<void> {
+  await reply(ctx, `🎉 *ZipEvents*\n\n${WELCOME_BODY}`, HOME_BUTTONS);
 }
 
 async function sendHome(ctx: CommandContext): Promise<void> {
@@ -735,6 +751,11 @@ export async function handleCustomerCommand(
     shouldHandleVendor(ctx.phone, ctx.text)
   ) {
     return handleVendorCommand(ctx);
+  }
+
+  if (upper.replace(/\s+/g, '_') === ZIP_EVENTS) {
+    await sendZipEventsHome(ctx);
+    return true;
   }
 
   if (upper === 'CREATE_EVENT') {

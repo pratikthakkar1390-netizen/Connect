@@ -111,15 +111,15 @@ function lastMessage(): SendMessageParams {
 }
 
 function assertWelcomeMenu(message: SendMessageParams): void {
-  assert.match(message.message, /Welcome to CONNECT/);
-  assert.match(message.message, /Moments to Memory/);
-  assert.doesNotMatch(message.message, /Welcome to CONNECT by zipbite/);
+  assert.match(message.message, /Welcome to ZipNest/);
+  assert.match(message.message, /Your local life, simplified/);
+  assert.match(message.message, /\nProvider$/);
   assert.doesNotMatch(message.message, /How many guests can attend/);
   assert.doesNotMatch(message.message, /What would you like to call it/);
   assert.doesNotMatch(message.message, /Which family are you inviting/);
   assert.deepEqual(
     message.buttons?.map((button) => button.payload),
-    ['CREATE_EVENT', 'MY_EVENTS', 'HELP'],
+    ['ZIP_EVENTS'],
   );
 }
 

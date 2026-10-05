@@ -29,21 +29,28 @@ test('getFirstNameFromDisplayName uses first whitespace token', () => {
   assert.equal(getFirstNameFromDisplayName('   '), undefined);
 });
 
-test('buildWelcomeMessage uses CONNECT greeting without zipbite', () => {
+test('buildWelcomeMessage uses the ZipNest umbrella menu', () => {
   const message = buildWelcomeMessage('John Smith');
 
-  assert.match(message, /^Welcome to CONNECT! 👋/);
-  assert.match(message, /Moments to Memory/);
-  assert.match(message, /Create events, invite guests, and manage RSVPs — simply through WhatsApp\./);
-  assert.doesNotMatch(message, /Welcome to CONNECT by zipbite/);
+  assert.equal(
+    message,
+    `Welcome to ZipNest! 👋
+Your local life, simplified.
+
+🎉 ZipEvents
+
+🍴 ZipBite — Coming Soon
+
+Provider`,
+  );
+  assert.doesNotMatch(message, /ZipShip|ZipFix|ZipRitual|ZipTable/);
 });
 
 test('buildWelcomeMessage is the same when sender name is missing', () => {
   const message = buildWelcomeMessage(undefined);
 
-  assert.match(message, /^Welcome to CONNECT! 👋/);
-  assert.doesNotMatch(message, /Welcome to CONNECT by zipbite/);
-  assert.doesNotMatch(message, /Welcome to CONNECT,/);
+  assert.match(message, /^Welcome to ZipNest! 👋/);
+  assert.doesNotMatch(message, /Welcome to ZipNest,/);
 });
 
 const SAMPLE_EVENT: Event = {

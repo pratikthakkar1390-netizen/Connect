@@ -405,7 +405,7 @@ test('organizer children button callback is not treated as greeting text', async
   assert.equal(state?.state, 'CONFIRMING_EVENT');
   assert.equal(state?.children_allowed, 1);
   assert.match(lastMessage().message, /Please confirm your event/);
-  assert.doesNotMatch(lastMessage().message, /Welcome to CONNECT/);
+  assert.doesNotMatch(lastMessage().message, /Welcome to ZipNest/);
 });
 
 test('actual Zernio Adults only callback saves policy and sends next WhatsApp message', async () => {

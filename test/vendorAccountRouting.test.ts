@@ -132,11 +132,12 @@ test('CONNECT account + Hi sends CONNECT Welcome', async () => {
   assert.equal(result.statusCode, 200);
   assert.match(JSON.stringify(result.body), /customer|organizer/);
   const welcome = sent.find((message) =>
-    message.message.includes('Welcome to CONNECT'),
+    message.message.includes('Welcome to ZipNest'),
   );
-  assert.ok(welcome, 'expected CONNECT Welcome');
+  assert.ok(welcome, 'expected ZipNest Welcome');
   assert.equal(welcome.accountId, CONNECT_ACCOUNT);
   assert.doesNotMatch(welcome.message, /ZipBite Provider/);
+  assert.doesNotMatch(welcome.message, /ZipNest Provider Account/);
 });
 
 test('vendor account + Hi enters that vendor automation, not CONNECT Welcome', async () => {
@@ -165,7 +166,7 @@ test('vendor account + Hi enters that vendor automation, not CONNECT Welcome', a
   assert.doesNotMatch(sent[0].message, /📦 Orders/);
   assert.equal(sent[0].accountId, VENDOR_ACCOUNT);
   assert.equal(sent[0].conversationId, 'conv-vendor-hi');
-  assert.doesNotMatch(sent[0].message, /Welcome to CONNECT/);
+  assert.doesNotMatch(sent[0].message, /Welcome to ZipNest/);
 
   const draft = JSON.parse(
     getConversationState(PHONE, VENDOR_ACCOUNT)?.vendor_draft ?? '{}',
@@ -218,7 +219,7 @@ test('unknown WhatsApp account returns 200 without CONNECT Welcome or RSVP', asy
   assert.equal(sent.length, 0);
   assert.doesNotMatch(
     sent.map((message) => message.message).join('\n'),
-    /Welcome to CONNECT/,
+    /Welcome to ZipNest/,
   );
   assert.deepEqual(
     listRsvpsForEvent(event.id).map((rsvp) => rsvp.status),
