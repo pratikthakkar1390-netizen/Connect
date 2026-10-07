@@ -12,6 +12,7 @@ import {
   createProviderOnboardingInvite,
   getActiveProviderOnboardingSession,
   getProviderOnboardingSessionByToken,
+  listProviderOnboardingSessions,
   PUBLIC_PROVIDER_ONBOARDING_MESSAGE,
   saveProviderOnboardingSession,
   validateProviderOnboardingToken,
@@ -22,10 +23,16 @@ import {
   shouldHandleVendor,
 } from '../src/vendors/flow.js';
 import {
+  addVendorProduct,
   createVendor,
   getVendorAvailability,
   getVendorByWhatsAppPhone,
+  getVendorProducts,
 } from '../src/vendors/store.js';
+import {
+  createVendorOrder,
+  listVendorOrders,
+} from '../src/vendors/orders/store.js';
 import { providerOnboardingRouter } from '../src/http/providerOnboarding.js';
 
 process.env.DATABASE_PATH = ':memory:';
@@ -269,6 +276,97 @@ test('Create Event is not swallowed by an active provider onboarding session', a
   assert.equal(named, true);
   assert.doesNotMatch(sent.at(-1)?.message ?? '', /owner name|contact person|business name/i);
   assert.ok(getActiveProviderOnboardingSession(phone));
+});
+
+test('Cancel expires onboarding and returns to ZipNest welcome without deleting provider data', async () => {
+  sent.length = 0;
+  const capture = async (params: SendMessageParams) => {
+    sent.push(params);
+  };
+  setVendorMessageSender(capture);
+  setCustomerMessageSender(capture);
+  const phone = '+15557770031';
+  const vendor = createVendor({
+    whatsappPhone: phone,
+    businessName: 'Keep Me Open',
+    category: 'CATERING',
+    status: 'ACTIVE',
+  });
+  const product = addVendorProduct({
+    vendorId: vendor.id,
+    productName: 'Samosa tray',
+    price: '$12',
+    unit: 'tray',
+  });
+  const order = createVendorOrder({
+    vendorId: vendor.id,
+    customerPhone: '+15557770032',
+    customerName: 'Guest',
+    pickupDate: '2027-06-15',
+    pickupTime: '5:30 PM',
+    items: [
+      {
+        productId: product.id,
+        productName: product.product_name,
+        quantity: 1,
+        unitPrice: 1200,
+      },
+    ],
+    now: new Date('2026-10-07T14:00:00.000Z'),
+  });
+
+  assert.equal(await send(phone, PUBLIC_PROVIDER_ONBOARDING_MESSAGE), true);
+  const active = getActiveProviderOnboardingSession(phone);
+  assert.ok(active);
+  const sessionId = active.id;
+
+  sent.length = 0;
+  assert.equal(await send(phone, 'PROVIDER_ONBOARDING_CANCEL', true), true);
+  assert.equal(getActiveProviderOnboardingSession(phone), undefined);
+  const expired = listProviderOnboardingSessions().find(
+    (session) => session.id === sessionId,
+  );
+  assert.ok(expired);
+  assert.equal(expired.completed_at, null);
+  assert.ok(expired.expires_at <= Date.now());
+  assert.match(sent.at(-1)?.message ?? '', /Welcome to ZipNest/);
+  assert.deepEqual(
+    sent.at(-1)?.buttons?.map((button) => button.payload),
+    ['ZIP_EVENTS'],
+  );
+  assert.doesNotMatch(sent.at(-1)?.message ?? '', /Welcome back/);
+  assert.doesNotMatch(sent.at(-1)?.message ?? '', /paused/);
+
+  assert.equal(getVendorByWhatsAppPhone(phone)?.id, vendor.id);
+  assert.equal(getVendorByWhatsAppPhone(phone)?.business_name, 'Keep Me Open');
+  assert.deepEqual(
+    getVendorProducts(vendor.id).map((item) => item.id),
+    [product.id],
+  );
+  assert.deepEqual(
+    listVendorOrders(vendor.id).map((item) => item.id),
+    [order.id],
+  );
+
+  sent.length = 0;
+  const greeted = await handleCustomerCommand(ctx(phone, 'Hi'));
+  assert.equal(greeted, true);
+  assert.match(sent.at(-1)?.message ?? '', /Welcome to ZipNest/);
+  assert.doesNotMatch(sent.at(-1)?.message ?? '', /Welcome back/);
+  assert.doesNotMatch(sent.at(-1)?.message ?? '', /confirm this WhatsApp number/);
+  assert.equal(getActiveProviderOnboardingSession(phone), undefined);
+
+  sent.length = 0;
+  assert.equal(await send(phone, 'Provider'), true);
+  assert.match(sent.at(-1)?.message ?? '', /ZipNest Provider Account/);
+  assert.equal(getActiveProviderOnboardingSession(phone), undefined);
+
+  sent.length = 0;
+  assert.equal(await send(phone, PUBLIC_PROVIDER_ONBOARDING_MESSAGE), true);
+  const resumed = getActiveProviderOnboardingSession(phone);
+  assert.ok(resumed);
+  assert.notEqual(resumed.id, sessionId);
+  assert.match(sent.at(-1)?.message ?? '', /business name/i);
 });
 
 test('WhatsApp provider onboarding resumes, validates, and updates one vendor', async () => {

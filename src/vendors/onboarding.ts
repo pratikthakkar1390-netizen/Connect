@@ -241,6 +241,21 @@ export function claimProviderOnboardingSession(input: {
     | undefined;
 }
 
+export function cancelProviderOnboardingSession(
+  phone: string,
+  nowMs = Date.now(),
+): void {
+  getDb()
+    .prepare(
+      `UPDATE vendor_onboarding_sessions
+       SET expires_at = ?, updated_at = datetime('now')
+       WHERE expected_phone = ?
+         AND completed_at IS NULL
+         AND expires_at > ?`,
+    )
+    .run(nowMs, normalizePhone(phone), nowMs);
+}
+
 export function getActiveProviderOnboardingSession(
   phone: string,
   nowMs = Date.now(),

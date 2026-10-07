@@ -3,6 +3,7 @@ import { getDb } from '../db/store.js';
 import type { InboxListSection } from '../zernio/client.js';
 import { interactiveCommandInput } from '../whatsapp/eventList.js';
 import {
+  cancelProviderOnboardingSession,
   claimProviderOnboardingSession,
   completeProviderOnboardingSession,
   getActiveProviderOnboardingSession,
@@ -380,9 +381,9 @@ export async function handleProviderOnboarding(
   const draft = parseProviderOnboardingDraft(session);
 
   if (input === 'PROVIDER_ONBOARDING_CANCEL') {
-    await reply(
-      'Onboarding is paused. Open your original secure link to continue later.',
-    );
+    cancelProviderOnboardingSession(ctx.phone);
+    const { routeToConnectWelcome } = await import('../commands/welcome.js');
+    await routeToConnectWelcome(ctx);
     return true;
   }
   if (input === 'PROVIDER_ONBOARDING_RESTART') {
