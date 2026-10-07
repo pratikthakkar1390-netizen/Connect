@@ -13,7 +13,10 @@ import {
   type InboxSendResult,
   type SendMessageParams,
 } from '../zernio/client.js';
-import { interactiveCommandInput } from '../whatsapp/eventList.js';
+import {
+  interactiveCommandInput,
+  isCustomerEventCommand,
+} from '../whatsapp/eventList.js';
 import {
   findProductStarter,
   productStartersForCategory,
@@ -151,13 +154,20 @@ export function shouldHandleVendor(
   input: string,
   accountId?: string,
 ): boolean {
-  if (shouldHandleProviderOnboarding(phone, input)) {
-    return true;
+  if (isCustomerEventCommand(input)) {
+    return false;
   }
   if (isVendorEntryText(input)) {
     return true;
   }
-  return isVendorConversationState(getConversationState(phone, accountId)?.state);
+  const state = getConversationState(phone, accountId)?.state;
+  if (state && !isVendorConversationState(state)) {
+    return false;
+  }
+  if (shouldHandleProviderOnboarding(phone, input)) {
+    return true;
+  }
+  return isVendorConversationState(state);
 }
 
 function parseDraft(raw: string | null | undefined): VendorDraft {
@@ -619,6 +629,11 @@ export async function handleVendorAccountInbound(
 }
 
 export async function handleVendorCommand(ctx: CommandContext): Promise<boolean> {
+  const input = interactiveCommandInput(ctx);
+  const trimmed = input.trim();
+  if (isCustomerEventCommand(trimmed) || isCustomerEventCommand(ctx.text)) {
+    return false;
+  }
   if (
     await handleProviderOnboarding(ctx, (message, buttons, list) =>
       reply(ctx, message, buttons, list),
@@ -626,8 +641,6 @@ export async function handleVendorCommand(ctx: CommandContext): Promise<boolean>
   ) {
     return true;
   }
-  const input = interactiveCommandInput(ctx);
-  const trimmed = input.trim();
   const upper = trimmed.toUpperCase();
   const compact = upper.replace(/\s+/g, '_');
   const state = getConversationState(ctx.phone, ctx.accountId);

@@ -60,6 +60,7 @@ import {
   hasEventAction,
   interactiveCommandInput,
   matchEventAction,
+  normalizeInteractiveCommand,
   parseEventActionId,
   WHATSAPP_LIST_MAX_ROWS,
 } from '../whatsapp/eventList.js';
@@ -453,6 +454,7 @@ async function sendWelcome(ctx: CommandContext): Promise<void> {
 }
 
 async function sendZipEventsHome(ctx: CommandContext): Promise<void> {
+  pauseOrganizerWizard(ctx.phone);
   await reply(ctx, `🎉 *ZipEvents*\n\n${WELCOME_BODY}`, HOME_BUTTONS);
 }
 
@@ -729,6 +731,17 @@ export async function handleCustomerCommand(
     return true;
   }
 
+  const eventCommand = normalizeInteractiveCommand(trimmed);
+  if (eventCommand === ZIP_EVENTS || eventCommand === 'ZIPEVENTS') {
+    await sendZipEventsHome(ctx);
+    return true;
+  }
+
+  if (eventCommand === 'CREATE_EVENT' || eventCommand === 'CREATEEVENT') {
+    await startCreateEventFlow(ctx);
+    return true;
+  }
+
   const {
     handleVendorCommand,
     isVendorCommand,
@@ -751,16 +764,6 @@ export async function handleCustomerCommand(
     shouldHandleVendor(ctx.phone, ctx.text)
   ) {
     return handleVendorCommand(ctx);
-  }
-
-  if (upper.replace(/\s+/g, '_') === ZIP_EVENTS) {
-    await sendZipEventsHome(ctx);
-    return true;
-  }
-
-  if (upper === 'CREATE_EVENT') {
-    await startCreateEventFlow(ctx);
-    return true;
   }
 
   if (upper === 'HELP' || upper === '?') {

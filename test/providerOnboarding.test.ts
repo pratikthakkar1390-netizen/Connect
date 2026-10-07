@@ -4,7 +4,8 @@ import express from 'express';
 import http from 'node:http';
 import { getDb } from '../src/db/store.js';
 import type { CommandContext } from '../src/commands/organizer.js';
-import { handleCustomerCommand } from '../src/commands/welcome.js';
+import { handleCustomerCommand, setCustomerMessageSender } from '../src/commands/welcome.js';
+import { setCreateEventMessageSender } from '../src/commands/createEventFlow.js';
 import type { SendMessageParams } from '../src/zernio/client.js';
 import {
   claimProviderOnboardingSession,
@@ -242,6 +243,32 @@ test('public WhatsApp intent creates and resumes a sender-bound session', async 
     }),
     undefined,
   );
+});
+
+test('Create Event is not swallowed by an active provider onboarding session', async () => {
+  sent.length = 0;
+  const capture = async (params: SendMessageParams) => {
+    sent.push(params);
+  };
+  setVendorMessageSender(capture);
+  setCustomerMessageSender(capture);
+  setCreateEventMessageSender(capture);
+  const phone = '+15557770021';
+  assert.equal(await send(phone, PUBLIC_PROVIDER_ONBOARDING_MESSAGE), true);
+  assert.ok(getActiveProviderOnboardingSession(phone));
+  assert.equal(shouldHandleVendor(phone, 'CREATE_EVENT'), false);
+
+  const started = await handleCustomerCommand(
+    ctx(phone, '', 'CREATE_EVENT'),
+  );
+  assert.equal(started, true);
+  assert.match(sent.at(-1)?.message ?? '', /What would you like to call it/);
+  assert.equal(shouldHandleVendor(phone, 'Wedding'), false);
+
+  const named = await handleCustomerCommand(ctx(phone, 'Wedding'));
+  assert.equal(named, true);
+  assert.doesNotMatch(sent.at(-1)?.message ?? '', /owner name|contact person|business name/i);
+  assert.ok(getActiveProviderOnboardingSession(phone));
 });
 
 test('WhatsApp provider onboarding resumes, validates, and updates one vendor', async () => {

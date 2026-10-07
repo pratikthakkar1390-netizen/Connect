@@ -459,12 +459,16 @@ function assertConnectWelcome(message: SendMessageParams | undefined): void {
   );
 }
 
-async function webhookThenCustomer(phone: string, text: string): Promise<boolean> {
-  const vendorHandled = await handleVendorCommand(ctx(phone, text));
+async function webhookThenCustomer(
+  phone: string,
+  text: string,
+  extra: Partial<CommandContext> = {},
+): Promise<boolean> {
+  const vendorHandled = await handleVendorCommand(ctx(phone, text, extra));
   if (vendorHandled) {
     return true;
   }
-  return handleCustomerCommand(ctx(phone, text));
+  return handleCustomerCommand(ctx(phone, text, extra));
 }
 
 test('hi from Vendor flow returns to the CONNECT Welcome menu', async () => {
@@ -540,6 +544,60 @@ test('hi from Catering product flow returns to the CONNECT Welcome menu', async 
   assert.equal(getConversationState(phone), undefined);
   assert.equal(getVendorById(vendor.id)?.business_name, 'Tray Co');
   assert.equal(getVendorByWhatsAppPhone(phone)?.id, vendor.id);
+});
+
+test('ZipEvents and Create Event win over leftover Vendor menu state', async () => {
+  sent.length = 0;
+  setVendorMessageSender(async (params) => {
+    sent.push(params);
+  });
+  setCustomerMessageSender(async (params) => {
+    sent.push(params);
+  });
+  setCreateEventMessageSender(async (params) => {
+    sent.push(params);
+  });
+  getDb();
+  const phone = '+15551119920';
+  await handleCustomerCommand(ctx(phone, 'PROVIDER'));
+  assert.equal(getConversationState(phone)?.state, 'VENDOR_MENU');
+  assert.match(sent.at(-1)?.message ?? '', /ZipNest Provider Account/);
+
+  assert.equal(shouldHandleVendor(phone, 'ZIP_EVENTS'), false);
+  assert.equal(shouldHandleVendor(phone, 'CREATE_EVENT'), false);
+
+  sent.length = 0;
+  const zipEvents = await webhookThenCustomer(
+    phone,
+    '',
+    {
+      interactiveType: 'button_reply',
+      interactiveId: 'ZIP_EVENTS',
+      buttonPayload: 'ZIP_EVENTS',
+    },
+  );
+  assert.equal(zipEvents, true);
+  assert.match(sent.at(-1)?.message ?? '', /🎉 \*ZipEvents\*/);
+  assert.doesNotMatch(sent.at(-1)?.message ?? '', /Your ZipBite service/);
+  assert.doesNotMatch(sent.at(-1)?.message ?? '', /ZipNest Provider Account/);
+  assert.equal(getConversationState(phone), undefined);
+
+  sent.length = 0;
+  await handleCustomerCommand(ctx(phone, 'PROVIDER'));
+  assert.equal(getConversationState(phone)?.state, 'VENDOR_MENU');
+  const created = await webhookThenCustomer(
+    phone,
+    '',
+    {
+      interactiveType: 'button_reply',
+      interactiveId: 'CREATE_EVENT',
+      buttonPayload: 'CREATE_EVENT',
+    },
+  );
+  assert.equal(created, true);
+  assert.match(sent.at(-1)?.message ?? '', /What would you like to call it/);
+  assert.equal(getConversationState(phone)?.state, 'WAITING_FOR_EVENT_NAME');
+  assert.equal(shouldHandleVendor(phone, 'Wedding'), false);
 });
 
 test('stale VENDOR list payload after hi does not re-enter Vendor', async () => {

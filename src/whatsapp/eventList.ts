@@ -117,6 +117,68 @@ export function matchEventAction(
   return { match: true, eventId, invalidSuffix: false };
 }
 
+export function normalizeInteractiveCommand(input: string): string {
+  return input
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+const CUSTOMER_EVENT_COMMANDS = new Set([
+  'ZIP_EVENTS',
+  'ZIPEVENTS',
+  'CREATE_EVENT',
+  'CREATEEVENT',
+  'MY_EVENTS',
+  'MYEVENTS',
+  'HELP',
+  'HOME',
+  'VIEW_OPTIONS',
+  'VIEWOPTIONS',
+]);
+
+const CUSTOMER_EVENT_PREFIXES = [
+  'MANAGE_EVENT',
+  'SELECT_EVENT',
+  'EVENT_DETAILS',
+  'GUEST_LIST',
+  'MORE_EVENT',
+  'VIEW_RSVPS',
+  'SHARE_RSVP',
+  'START_INVITE',
+  'EDIT_EVENT',
+  'SEND_UPDATE',
+  'VOID_EVENT',
+  'DELETE_EVENT',
+  'INVITE',
+  'ADD_GROUP_MEMBER',
+  'DONE_GROUP',
+  'DONE_SENDING',
+  'FAMILY_LIMIT',
+  'CONFIRM_EVENT',
+  'CANCEL_EVENT',
+  'ADD_DETAILS',
+  'SKIP_DETAILS',
+];
+
+/** ZipEvents / create-event / manage-event actions must never be consumed as vendor input. */
+export function isCustomerEventCommand(input: string): boolean {
+  const key = normalizeInteractiveCommand(input);
+  if (!key) {
+    return false;
+  }
+  if (CUSTOMER_EVENT_COMMANDS.has(key)) {
+    return true;
+  }
+  return CUSTOMER_EVENT_PREFIXES.some(
+    (prefix) =>
+      key === prefix ||
+      key.startsWith(`${prefix}_`) ||
+      key.startsWith(`${prefix}:`),
+  );
+}
+
 /**
  * List replies must use the row `id` (interactiveId), never the 24-char title.
  * Button / template replies still prefer buttonPayload.

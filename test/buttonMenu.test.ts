@@ -186,6 +186,13 @@ test('ZipEvents opens the unchanged event menu', async () => {
   assertHomeButtons(lastMessage());
 });
 
+test('typed ZipEvents from the welcome body opens the event menu', async () => {
+  const handled = await handleCustomerCommand(ctx('🎉 ZipEvents'));
+  assert.equal(handled, true);
+  assert.match(lastMessage().message, /🎉 \*ZipEvents\*/);
+  assertHomeButtons(lastMessage());
+});
+
 test('Help is the same for organizers and has no typed commands', async () => {
   await handleCustomerCommand(ctx('HELP'));
   const customer = lastMessage().message;
