@@ -119,7 +119,7 @@ function assertWelcomeMenu(message: SendMessageParams): void {
   assert.doesNotMatch(message.message, /Which family are you inviting/);
   assert.deepEqual(
     message.buttons?.map((button) => button.payload),
-    ['ZIP_EVENTS'],
+    ['ZIP_EVENTS', 'PROVIDER'],
   );
 }
 

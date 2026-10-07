@@ -33,6 +33,7 @@ import {
   EDIT_EVENT,
 } from '../src/commands/eventUpdateFlow.js';
 import { setCreateEventMessageSender } from '../src/commands/createEventFlow.js';
+import { setVendorMessageSender } from '../src/vendors/flow.js';
 import type { CommandContext } from '../src/commands/organizer.js';
 import type { SendMessageParams } from '../src/zernio/client.js';
 
@@ -81,12 +82,16 @@ test.beforeEach(() => {
   setEventUpdateMessageSender(async (params) => {
     sent.push(params);
   });
+  setVendorMessageSender(async (params) => {
+    sent.push(params);
+  });
 });
 
 test.afterEach(() => {
   setCustomerMessageSender();
   setCreateEventMessageSender();
   setEventUpdateMessageSender();
+  setVendorMessageSender();
   closeDb();
 });
 
@@ -168,6 +173,14 @@ test('greeting shows ZipNest with ZipEvents as the primary action', async () => 
   assert.match(lastMessage().message, /🍴 ZipBite — Coming Soon/);
   assert.match(lastMessage().message, /\nProvider$/);
   assert.deepEqual(lastMessage().buttons, MAIN_MENU_BUTTONS);
+  assert.deepEqual(
+    lastMessage().buttons?.map((button) => button.payload),
+    [ZIP_EVENTS, 'PROVIDER'],
+  );
+  assert.equal(
+    lastMessage().buttons?.some((button) => button.title === 'Provider'),
+    true,
+  );
   assert.equal(
     lastMessage().buttons?.some((button) => /ZipBite/i.test(button.title)),
     false,
@@ -184,6 +197,17 @@ test('ZipEvents opens the unchanged event menu', async () => {
   assert.match(lastMessage().message, /🎉 \*ZipEvents\*/);
   assert.match(lastMessage().message, /Moments to Memory/);
   assertHomeButtons(lastMessage());
+});
+
+test('Provider button opens the existing ZipNest Provider Account', async () => {
+  const handled = await handleCustomerCommand(tap('PROVIDER'));
+  assert.equal(handled, true);
+  assert.match(lastMessage().message, /ZipNest Provider Account/);
+  assert.equal(
+    lastMessage().buttons?.some((button) => button.payload === 'VENDOR_MENU'),
+    true,
+  );
+  assert.doesNotMatch(lastMessage().message, /🎉 \*ZipEvents\*/);
 });
 
 test('typed ZipEvents from the welcome body opens the event menu', async () => {

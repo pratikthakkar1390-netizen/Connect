@@ -138,6 +138,7 @@ export const HOME_BUTTONS = [
 
 export const MAIN_MENU_BUTTONS = [
   { title: '🎉 ZipEvents', payload: ZIP_EVENTS },
+  { title: 'Provider', payload: 'PROVIDER' },
 ];
 
 const CUSTOMER_HELP_TEXT = `*CONNECT Help*

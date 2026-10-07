@@ -332,7 +332,7 @@ test('Cancel expires onboarding and returns to ZipNest welcome without deleting 
   assert.match(sent.at(-1)?.message ?? '', /Welcome to ZipNest/);
   assert.deepEqual(
     sent.at(-1)?.buttons?.map((button) => button.payload),
-    ['ZIP_EVENTS'],
+    ['ZIP_EVENTS', 'PROVIDER'],
   );
   assert.doesNotMatch(sent.at(-1)?.message ?? '', /Welcome back/);
   assert.doesNotMatch(sent.at(-1)?.message ?? '', /paused/);

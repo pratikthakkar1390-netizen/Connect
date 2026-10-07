@@ -455,7 +455,7 @@ function assertConnectWelcome(message: SendMessageParams | undefined): void {
   assert.doesNotMatch(message.message, /Suggested name:/);
   assert.deepEqual(
     message.buttons?.map((button) => button.payload),
-    ['ZIP_EVENTS'],
+    ['ZIP_EVENTS', 'PROVIDER'],
   );
 }
 
