@@ -370,6 +370,10 @@ test('Cancel expires onboarding and returns to ZipNest welcome without deleting 
   assert.ok(resumed);
   assert.notEqual(resumed.id, sessionId);
   assert.match(sent.at(-1)?.message ?? '', /business name/i);
+  assert.deepEqual(
+    sent.at(-1)?.buttons?.map((button) => button.payload),
+    ['PROVIDER_ONBOARDING_CANCEL'],
+  );
 });
 
 test('WhatsApp provider onboarding resumes, validates, and updates one vendor', async () => {
@@ -406,11 +410,34 @@ test('WhatsApp provider onboarding resumes, validates, and updates one vendor', 
   await send(FLOW_PHONE, 'PROVIDER_PHONE_CONFIRM', true);
   await send(FLOW_PHONE, '1 Main Street');
   assert.ok(sent.at(-1)?.list);
+  assert.equal(
+    sent.at(-1)?.list?.sections[0]?.rows.some(
+      (row) => row.id === 'PROVIDER_ONBOARDING_CANCEL',
+    ),
+    true,
+  );
   await send(FLOW_PHONE, 'PROVIDER_TYPE_TIFFIN', true);
   await send(FLOW_PHONE, 'PROVIDER_MENU_MANUAL', true);
+  assert.equal(
+    sent.at(-1)?.list?.sections[0]?.rows.some(
+      (row) => row.id === 'PROVIDER_ONBOARDING_CANCEL',
+    ),
+    true,
+  );
   await send(FLOW_PHONE, 'PROVIDER_FREQ_DAILY', true);
   await send(FLOW_PHONE, 'PROVIDER_PAY_BOTH', true);
-  await send(FLOW_PHONE, 'Mon-Fri, 9 AM-6 PM');
+  assert.ok(sent.at(-1)?.list);
+  assert.deepEqual(
+    sent.at(-1)?.list?.sections[0]?.rows.map((row) => row.id),
+    [
+      'PROVIDER_AVAIL_WEEKDAYS',
+      'PROVIDER_AVAIL_DAILY',
+      'PROVIDER_AVAIL_WEEKENDS',
+      'PROVIDER_AVAIL_CUSTOM',
+      'PROVIDER_ONBOARDING_CANCEL',
+    ],
+  );
+  await send(FLOW_PHONE, 'PROVIDER_AVAIL_WEEKDAYS', true);
 
   const summary = sent.at(-1)?.message ?? '';
   assert.match(summary, /Curry Home/);
@@ -436,7 +463,7 @@ test('WhatsApp provider onboarding resumes, validates, and updates one vendor', 
   assert.equal(completed.onboarding_source, 'WHATSAPP_LINK');
   assert.equal(
     getVendorAvailability(completed.id)?.availability_text,
-    'Mon-Fri, 9 AM-6 PM',
+    'Weekdays, Monday-Friday, 9 AM-6 PM',
   );
   assert.equal(getActiveProviderOnboardingSession(FLOW_PHONE), undefined);
   assert.equal(validateProviderOnboardingToken(invite.token), undefined);
@@ -459,11 +486,17 @@ test('photo and PDF preferences are hooks, not media ingestion', async () => {
   await send(phone, 'PROVIDER_MENU_PDF', true);
   await send(phone, 'PROVIDER_FREQ_WEEKLY', true);
   await send(phone, 'PROVIDER_PAY_COD', true);
+  await send(phone, 'PROVIDER_AVAIL_CUSTOM', true);
+  assert.match(sent.at(-1)?.message ?? '', /type your pickup days and hours/i);
   await send(phone, 'Saturdays 10 AM-4 PM');
   await send(phone, 'PROVIDER_ONBOARDING_CONFIRM', true);
   const vendor = getVendorByWhatsAppPhone(phone);
   assert.equal(vendor?.menu_source_method, 'PDF');
   assert.equal(vendor?.payment_preference, 'COD');
+  assert.equal(
+    getVendorAvailability(vendor!.id)?.availability_text,
+    'Saturdays 10 AM-4 PM',
+  );
   assert.match(sent.at(-1)?.message ?? '', /upload review is not enabled/i);
   const paymentTables = getDb()
     .prepare(
@@ -472,6 +505,96 @@ test('photo and PDF preferences are hooks, not media ingestion', async () => {
     )
     .all();
   assert.deepEqual(paymentTables, []);
+});
+
+async function completeOnboardingToAvailability(phone: string): Promise<void> {
+  const invite = createProviderOnboardingInvite({ phone });
+  await send(phone, `CONNECT PROVIDER ${invite.token}`);
+  await send(phone, `${phone} Kitchen`);
+  await send(phone, 'Owner Name');
+  await send(phone, 'PROVIDER_PHONE_CONFIRM', true);
+  await send(phone, '10 Test Street');
+  await send(phone, 'PROVIDER_TYPE_SNACKS', true);
+  await send(phone, 'PROVIDER_MENU_MANUAL', true);
+  await send(phone, 'PROVIDER_FREQ_OCCASIONAL', true);
+  await send(phone, 'PROVIDER_PAY_FIRST', true);
+}
+
+test('typed-entry Cancel returns to ZipNest welcome without deleting provider data', async () => {
+  sent.length = 0;
+  const capture = async (params: SendMessageParams) => {
+    sent.push(params);
+  };
+  setVendorMessageSender(capture);
+  setCustomerMessageSender(capture);
+  const phone = '+15557770051';
+  const vendor = createVendor({
+    whatsappPhone: phone,
+    businessName: 'Keep After Cancel',
+    status: 'ACTIVE',
+  });
+  assert.equal(await send(phone, PUBLIC_PROVIDER_ONBOARDING_MESSAGE), true);
+  assert.deepEqual(
+    sent.at(-1)?.buttons?.map((button) => button.payload),
+    ['PROVIDER_ONBOARDING_CANCEL'],
+  );
+  sent.length = 0;
+  assert.equal(await send(phone, 'PROVIDER_ONBOARDING_CANCEL', true), true);
+  assert.equal(getActiveProviderOnboardingSession(phone), undefined);
+  assert.match(sent.at(-1)?.message ?? '', /Welcome to ZipNest/);
+  assert.deepEqual(
+    sent.at(-1)?.buttons?.map((button) => button.payload),
+    ['ZIP_EVENTS', 'PROVIDER'],
+  );
+  assert.equal(getVendorByWhatsAppPhone(phone)?.id, vendor.id);
+  assert.equal(getVendorByWhatsAppPhone(phone)?.business_name, 'Keep After Cancel');
+});
+
+test('availability presets and custom each have a working next step', async () => {
+  sent.length = 0;
+  setVendorMessageSender(async (params) => {
+    sent.push(params);
+  });
+
+  const dailyPhone = '+15557770052';
+  await completeOnboardingToAvailability(dailyPhone);
+  await send(dailyPhone, 'not-a-preset');
+  assert.ok(sent.at(-1)?.list);
+  await send(dailyPhone, 'PROVIDER_AVAIL_DAILY', true);
+  await send(dailyPhone, 'PROVIDER_ONBOARDING_CONFIRM', true);
+  assert.equal(
+    getVendorAvailability(getVendorByWhatsAppPhone(dailyPhone)!.id)
+      ?.availability_text,
+    'Daily, every day, 9 AM-6 PM',
+  );
+
+  const weekendPhone = '+15557770053';
+  await completeOnboardingToAvailability(weekendPhone);
+  await send(weekendPhone, 'PROVIDER_AVAIL_WEEKENDS', true);
+  await send(weekendPhone, 'PROVIDER_ONBOARDING_CONFIRM', true);
+  assert.equal(
+    getVendorAvailability(getVendorByWhatsAppPhone(weekendPhone)!.id)
+      ?.availability_text,
+    'Weekends, Saturday-Sunday, 10 AM-4 PM',
+  );
+
+  const customPhone = '+15557770054';
+  await completeOnboardingToAvailability(customPhone);
+  await send(customPhone, 'PROVIDER_AVAIL_CUSTOM', true);
+  assert.match(sent.at(-1)?.message ?? '', /type your pickup days and hours/i);
+  assert.deepEqual(
+    sent.at(-1)?.buttons?.map((button) => button.payload),
+    ['PROVIDER_ONBOARDING_CANCEL'],
+  );
+  await send(customPhone, 'xx');
+  assert.match(sent.at(-1)?.message ?? '', /between 4 and 500/i);
+  await send(customPhone, 'Tue-Thu, 11 AM-7 PM, 24-hour notice');
+  await send(customPhone, 'PROVIDER_ONBOARDING_CONFIRM', true);
+  assert.equal(
+    getVendorAvailability(getVendorByWhatsAppPhone(customPhone)!.id)
+      ?.availability_text,
+    'Tue-Thu, 11 AM-7 PM, 24-hour notice',
+  );
 });
 
 test('provider admin routes require Basic Auth and support review', async () => {

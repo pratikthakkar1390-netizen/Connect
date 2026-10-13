@@ -22,6 +22,7 @@ export type ProviderOnboardingStep =
   | 'ORDERING_FREQUENCY'
   | 'PAYMENT_METHOD'
   | 'AVAILABILITY'
+  | 'AVAILABILITY_CUSTOM'
   | 'REVIEW'
   | 'COMPLETED';
 

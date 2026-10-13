@@ -70,6 +70,45 @@ const PAYMENT_METHODS = new Map([
   ['PROVIDER_PAY_BOTH', 'BOTH'],
 ]);
 
+const CANCEL_BUTTON = {
+  title: 'Cancel',
+  payload: 'PROVIDER_ONBOARDING_CANCEL',
+};
+const CANCEL_ROW = {
+  id: 'PROVIDER_ONBOARDING_CANCEL',
+  title: 'Cancel',
+};
+
+const AVAILABILITY_PRESETS = new Map([
+  ['PROVIDER_AVAIL_WEEKDAYS', 'Weekdays, Monday-Friday, 9 AM-6 PM'],
+  ['PROVIDER_AVAIL_DAILY', 'Daily, every day, 9 AM-6 PM'],
+  ['PROVIDER_AVAIL_WEEKENDS', 'Weekends, Saturday-Sunday, 10 AM-4 PM'],
+]);
+
+const AVAILABILITY_ROWS = [
+  {
+    id: 'PROVIDER_AVAIL_WEEKDAYS',
+    title: 'Weekdays 9-6',
+    description: 'Monday-Friday, 9 AM to 6 PM',
+  },
+  {
+    id: 'PROVIDER_AVAIL_DAILY',
+    title: 'Daily 9-6',
+    description: 'Every day, 9 AM to 6 PM',
+  },
+  {
+    id: 'PROVIDER_AVAIL_WEEKENDS',
+    title: 'Weekends 10-4',
+    description: 'Saturday-Sunday, 10 AM to 4 PM',
+  },
+  {
+    id: 'PROVIDER_AVAIL_CUSTOM',
+    title: 'Custom',
+    description: 'Type your own days and hours',
+  },
+  CANCEL_ROW,
+];
+
 const CHOICE_LABELS: Record<string, string> = {
   TIFFIN: 'Tiffin',
   HOMEMADE_MEALS: 'Homemade Meals',
@@ -158,10 +197,10 @@ async function promptForStep(
   const draft = parseProviderOnboardingDraft(session);
   switch (session.step) {
     case 'BUSINESS_NAME':
-      await reply('What is your business name?');
+      await reply('What is your business name?', [CANCEL_BUTTON]);
       return;
     case 'OWNER_NAME':
-      await reply('What is the provider or owner name?');
+      await reply('What is the provider or owner name?', [CANCEL_BUTTON]);
       return;
     case 'CONFIRM_PHONE':
       await reply(
@@ -175,7 +214,9 @@ async function promptForStep(
       );
       return;
     case 'PICKUP_LOCATION':
-      await reply('What is the pickup location or business address?');
+      await reply('What is the pickup location or business address?', [
+        CANCEL_BUTTON,
+      ]);
       return;
     case 'PROVIDER_TYPE':
       await reply('Choose your provider type.', undefined, {
@@ -183,10 +224,13 @@ async function promptForStep(
         sections: [
           {
             title: 'Provider type',
-            rows: [...PROVIDER_TYPES].map(([id, value]) => ({
-              id,
-              title: choiceLabel(value),
-            })),
+            rows: [
+              ...[...PROVIDER_TYPES].map(([id, value]) => ({
+                id,
+                title: choiceLabel(value),
+              })),
+              CANCEL_ROW,
+            ],
           },
         ],
       });
@@ -204,10 +248,13 @@ async function promptForStep(
         sections: [
           {
             title: 'Ordering frequency',
-            rows: [...ORDERING_FREQUENCIES].map(([id, value]) => ({
-              id,
-              title: choiceLabel(value),
-            })),
+            rows: [
+              ...[...ORDERING_FREQUENCIES].map(([id, value]) => ({
+                id,
+                title: choiceLabel(value),
+              })),
+              CANCEL_ROW,
+            ],
           },
         ],
       });
@@ -221,7 +268,23 @@ async function promptForStep(
       return;
     case 'AVAILABILITY':
       await reply(
-        'Share your pickup and availability information (days, hours, and any advance notice needed).',
+        'When can customers pick up? Each option lists the days and hours. Choose Custom to type a different schedule.',
+        undefined,
+        {
+          button: 'Availability',
+          sections: [
+            {
+              title: 'Pickup schedule',
+              rows: AVAILABILITY_ROWS,
+            },
+          ],
+        },
+      );
+      return;
+    case 'AVAILABILITY_CUSTOM':
+      await reply(
+        'Type your pickup days and hours (for example: Tue-Thu, 11 AM-7 PM, 24-hour notice).',
+        [CANCEL_BUTTON],
       );
       return;
     case 'REVIEW':
@@ -402,7 +465,9 @@ export async function handleProviderOnboarding(
   switch (session.step) {
     case 'BUSINESS_NAME': {
       if (!validText(text, 2)) {
-        await reply('Enter a business name between 2 and 500 characters.');
+        await reply('Enter a business name between 2 and 500 characters.', [
+          CANCEL_BUTTON,
+        ]);
         return true;
       }
       await promptForStep(
@@ -413,7 +478,9 @@ export async function handleProviderOnboarding(
     }
     case 'OWNER_NAME': {
       if (!validText(text, 2)) {
-        await reply('Enter an owner name between 2 and 500 characters.');
+        await reply('Enter an owner name between 2 and 500 characters.', [
+          CANCEL_BUTTON,
+        ]);
         return true;
       }
       await promptForStep(
@@ -431,7 +498,9 @@ export async function handleProviderOnboarding(
       return true;
     case 'PICKUP_LOCATION': {
       if (!validText(text, 4)) {
-        await reply('Enter a pickup location between 4 and 500 characters.');
+        await reply('Enter a pickup location between 4 and 500 characters.', [
+          CANCEL_BUTTON,
+        ]);
         return true;
       }
       await promptForStep(
@@ -489,8 +558,26 @@ export async function handleProviderOnboarding(
       return true;
     }
     case 'AVAILABILITY': {
+      if (input === 'PROVIDER_AVAIL_CUSTOM') {
+        await promptForStep(save(session, 'AVAILABILITY_CUSTOM', draft), reply);
+        return true;
+      }
+      const availability = AVAILABILITY_PRESETS.get(input);
+      if (!availability) {
+        await promptForStep(session, reply);
+        return true;
+      }
+      await promptForStep(
+        save(session, 'REVIEW', { ...draft, availability }),
+        reply,
+      );
+      return true;
+    }
+    case 'AVAILABILITY_CUSTOM': {
       if (!validText(text, 4)) {
-        await reply('Enter availability between 4 and 500 characters.');
+        await reply('Enter availability between 4 and 500 characters.', [
+          CANCEL_BUTTON,
+        ]);
         return true;
       }
       await promptForStep(
