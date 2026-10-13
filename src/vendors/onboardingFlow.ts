@@ -7,7 +7,6 @@ import {
   claimProviderOnboardingSession,
   completeProviderOnboardingSession,
   getActiveProviderOnboardingSession,
-  getProviderOnboardingSessionByToken,
   parseProviderOnboardingDraft,
   PUBLIC_PROVIDER_ONBOARDING_MESSAGE,
   saveProviderOnboardingSession,
@@ -173,6 +172,26 @@ function validText(value: string, minimum = 2): boolean {
   return value.length >= minimum && value.length <= MAX_TEXT_LENGTH;
 }
 
+function hasCancelButton(
+  buttons?: Array<{ title: string; payload: string }>,
+): boolean {
+  return Boolean(
+    buttons?.some((button) => button.payload === 'PROVIDER_ONBOARDING_CANCEL'),
+  );
+}
+
+async function sendPrompt(
+  reply: ProviderReply,
+  message: string,
+  buttons?: Array<{ title: string; payload: string }>,
+  list?: { button: string; sections: InboxListSection[] },
+): Promise<void> {
+  await reply(message, buttons, list);
+  if (list || (buttons?.length && !hasCancelButton(buttons))) {
+    await reply('Or tap Cancel to exit onboarding.', [CANCEL_BUTTON]);
+  }
+}
+
 function save(
   session: ProviderOnboardingSession,
   step: ProviderOnboardingStep,
@@ -197,13 +216,20 @@ async function promptForStep(
   const draft = parseProviderOnboardingDraft(session);
   switch (session.step) {
     case 'BUSINESS_NAME':
-      await reply('What is your business name?', [CANCEL_BUTTON]);
+      await sendPrompt(
+        reply,
+        `${PROVIDER_ONBOARDING_WELCOME}\n\nWhat is your business name?`,
+        [CANCEL_BUTTON],
+      );
       return;
     case 'OWNER_NAME':
-      await reply('What is the provider or owner name?', [CANCEL_BUTTON]);
+      await sendPrompt(reply, 'What is the provider or owner name?', [
+        CANCEL_BUTTON,
+      ]);
       return;
     case 'CONFIRM_PHONE':
-      await reply(
+      await sendPrompt(
+        reply,
         `Please confirm this WhatsApp number for your business: ${maskPhone(
           session.expected_phone,
         )}`,
@@ -214,12 +240,14 @@ async function promptForStep(
       );
       return;
     case 'PICKUP_LOCATION':
-      await reply('What is the pickup location or business address?', [
-        CANCEL_BUTTON,
-      ]);
+      await sendPrompt(
+        reply,
+        'What is the pickup location or business address?',
+        [CANCEL_BUTTON],
+      );
       return;
     case 'PROVIDER_TYPE':
-      await reply('Choose your provider type.', undefined, {
+      await sendPrompt(reply, 'Choose your provider type.', undefined, {
         button: 'Provider type',
         sections: [
           {
@@ -236,14 +264,14 @@ async function promptForStep(
       });
       return;
     case 'MENU_METHOD':
-      await reply('How would you like to provide your menu?', [
+      await sendPrompt(reply, 'How would you like to provide your menu?', [
         { title: 'Photos', payload: 'PROVIDER_MENU_PHOTOS' },
         { title: 'PDF', payload: 'PROVIDER_MENU_PDF' },
         { title: 'Enter manually', payload: 'PROVIDER_MENU_MANUAL' },
       ]);
       return;
     case 'ORDERING_FREQUENCY':
-      await reply('How do customers usually order from you?', undefined, {
+      await sendPrompt(reply, 'How do customers usually order from you?', undefined, {
         button: 'Ordering type',
         sections: [
           {
@@ -260,14 +288,15 @@ async function promptForStep(
       });
       return;
     case 'PAYMENT_METHOD':
-      await reply('Which payment method do you support?', [
+      await sendPrompt(reply, 'Which payment method do you support?', [
         { title: 'COD', payload: 'PROVIDER_PAY_COD' },
         { title: 'Pay First', payload: 'PROVIDER_PAY_FIRST' },
         { title: 'Both', payload: 'PROVIDER_PAY_BOTH' },
       ]);
       return;
     case 'AVAILABILITY':
-      await reply(
+      await sendPrompt(
+        reply,
         'When can customers pick up? Each option lists the days and hours. Choose Custom to type a different schedule.',
         undefined,
         {
@@ -282,13 +311,14 @@ async function promptForStep(
       );
       return;
     case 'AVAILABILITY_CUSTOM':
-      await reply(
+      await sendPrompt(
+        reply,
         'Type your pickup days and hours (for example: Tue-Thu, 11 AM-7 PM, 24-hour notice).',
         [CANCEL_BUTTON],
       );
       return;
     case 'REVIEW':
-      await reply(providerSummary(session.expected_phone, draft), [
+      await sendPrompt(reply, providerSummary(session.expected_phone, draft), [
         { title: 'Confirm', payload: 'PROVIDER_ONBOARDING_CONFIRM' },
         { title: 'Start over', payload: 'PROVIDER_ONBOARDING_RESTART' },
         { title: 'Cancel', payload: 'PROVIDER_ONBOARDING_CANCEL' },
@@ -402,17 +432,11 @@ export async function handleProviderOnboarding(
   const token = providerOnboardingToken(rawInput);
   let session: ProviderOnboardingSession | undefined;
   if (isPublicProviderOnboardingIntent(rawInput)) {
-    const existing = getActiveProviderOnboardingSession(ctx.phone);
     session = startPublicProviderOnboardingSession({ phone: ctx.phone });
-    if (!existing) {
-      await reply(PROVIDER_ONBOARDING_WELCOME);
-    }
     await promptForStep(session, reply);
     return true;
   }
   if (token) {
-    const firstClaim =
-      !getProviderOnboardingSessionByToken(token)?.claimed_at;
     session = claimProviderOnboardingSession({
       token,
       phone: ctx.phone,
@@ -422,9 +446,6 @@ export async function handleProviderOnboarding(
         'This onboarding link is invalid, expired, already used, or belongs to another WhatsApp number.',
       );
       return true;
-    }
-    if (firstClaim) {
-      await reply(PROVIDER_ONBOARDING_WELCOME);
     }
     await promptForStep(session, reply);
     return true;

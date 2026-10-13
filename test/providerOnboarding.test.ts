@@ -221,11 +221,12 @@ test('public WhatsApp intent creates and resumes a sender-bound session', async 
   assert.equal(first.expected_phone, PUBLIC_PHONE);
   assert.equal(first.step, 'BUSINESS_NAME');
   assert.ok(first.claimed_at);
-  assert.equal(
-    sent.at(-2)?.message,
-    "🍱 Welcome to ZipBite!\nLet's get your food business set up.",
-  );
+  assert.match(sent.at(-1)?.message ?? '', /Welcome to ZipBite/);
   assert.match(sent.at(-1)?.message ?? '', /business name/i);
+  assert.deepEqual(
+    sent.at(-1)?.buttons?.map((button) => button.payload),
+    ['PROVIDER_ONBOARDING_CANCEL'],
+  );
 
   await send(PUBLIC_PHONE, PUBLIC_PROVIDER_ONBOARDING_MESSAGE);
   const resumed = getActiveProviderOnboardingSession(PUBLIC_PHONE);
@@ -390,11 +391,12 @@ test('WhatsApp provider onboarding resumes, validates, and updates one vendor', 
 
   assert.equal(shouldHandleVendor(FLOW_PHONE, `CONNECT PROVIDER ${invite.token}`), true);
   assert.equal(await send(FLOW_PHONE, `CONNECT PROVIDER ${invite.token}`), true);
-  assert.equal(
-    sent.at(-2)?.message,
-    "🍱 Welcome to ZipBite!\nLet's get your food business set up.",
-  );
+  assert.match(sent.at(-1)?.message ?? '', /Welcome to ZipBite/);
   assert.match(sent.at(-1)?.message ?? '', /business name/i);
+  assert.deepEqual(
+    sent.at(-1)?.buttons?.map((button) => button.payload),
+    ['PROVIDER_ONBOARDING_CANCEL'],
+  );
 
   await send(FLOW_PHONE, 'C');
   assert.match(sent.at(-1)?.message ?? '', /between 2 and 500/i);
@@ -409,26 +411,34 @@ test('WhatsApp provider onboarding resumes, validates, and updates one vendor', 
 
   await send(FLOW_PHONE, 'PROVIDER_PHONE_CONFIRM', true);
   await send(FLOW_PHONE, '1 Main Street');
-  assert.ok(sent.at(-1)?.list);
+  assert.ok(sent.at(-2)?.list);
   assert.equal(
-    sent.at(-1)?.list?.sections[0]?.rows.some(
+    sent.at(-2)?.list?.sections[0]?.rows.some(
       (row) => row.id === 'PROVIDER_ONBOARDING_CANCEL',
     ),
     true,
+  );
+  assert.deepEqual(
+    sent.at(-1)?.buttons?.map((button) => button.payload),
+    ['PROVIDER_ONBOARDING_CANCEL'],
   );
   await send(FLOW_PHONE, 'PROVIDER_TYPE_TIFFIN', true);
   await send(FLOW_PHONE, 'PROVIDER_MENU_MANUAL', true);
   assert.equal(
-    sent.at(-1)?.list?.sections[0]?.rows.some(
+    sent.at(-2)?.list?.sections[0]?.rows.some(
       (row) => row.id === 'PROVIDER_ONBOARDING_CANCEL',
     ),
     true,
   );
+  assert.deepEqual(
+    sent.at(-1)?.buttons?.map((button) => button.payload),
+    ['PROVIDER_ONBOARDING_CANCEL'],
+  );
   await send(FLOW_PHONE, 'PROVIDER_FREQ_DAILY', true);
   await send(FLOW_PHONE, 'PROVIDER_PAY_BOTH', true);
-  assert.ok(sent.at(-1)?.list);
+  assert.ok(sent.at(-2)?.list);
   assert.deepEqual(
-    sent.at(-1)?.list?.sections[0]?.rows.map((row) => row.id),
+    sent.at(-2)?.list?.sections[0]?.rows.map((row) => row.id),
     [
       'PROVIDER_AVAIL_WEEKDAYS',
       'PROVIDER_AVAIL_DAILY',
@@ -436,6 +446,10 @@ test('WhatsApp provider onboarding resumes, validates, and updates one vendor', 
       'PROVIDER_AVAIL_CUSTOM',
       'PROVIDER_ONBOARDING_CANCEL',
     ],
+  );
+  assert.deepEqual(
+    sent.at(-1)?.buttons?.map((button) => button.payload),
+    ['PROVIDER_ONBOARDING_CANCEL'],
   );
   await send(FLOW_PHONE, 'PROVIDER_AVAIL_WEEKDAYS', true);
 
@@ -559,7 +573,11 @@ test('availability presets and custom each have a working next step', async () =
   const dailyPhone = '+15557770052';
   await completeOnboardingToAvailability(dailyPhone);
   await send(dailyPhone, 'not-a-preset');
-  assert.ok(sent.at(-1)?.list);
+  assert.ok(sent.at(-2)?.list);
+  assert.deepEqual(
+    sent.at(-1)?.buttons?.map((button) => button.payload),
+    ['PROVIDER_ONBOARDING_CANCEL'],
+  );
   await send(dailyPhone, 'PROVIDER_AVAIL_DAILY', true);
   await send(dailyPhone, 'PROVIDER_ONBOARDING_CONFIRM', true);
   assert.equal(
