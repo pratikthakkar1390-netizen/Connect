@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import http from 'node:http';
-import { getDb } from '../src/db/store.js';
+import { getDb, upsertMessageSession } from '../src/db/store.js';
 import type { CommandContext } from '../src/commands/organizer.js';
 import { handleCustomerCommand, setCustomerMessageSender } from '../src/commands/welcome.js';
 import { setCreateEventMessageSender } from '../src/commands/createEventFlow.js';
@@ -19,6 +19,8 @@ import {
 } from '../src/vendors/onboarding.js';
 import {
   handleVendorCommand,
+  notifyProviderReviewDecision,
+  providerReviewDecisionMessage,
   setVendorMessageSender,
   shouldHandleVendor,
 } from '../src/vendors/flow.js';
@@ -28,6 +30,7 @@ import {
   getVendorAvailability,
   getVendorByWhatsAppPhone,
   getVendorProducts,
+  setVendorStatus,
 } from '../src/vendors/store.js';
 import {
   createVendorOrder,
@@ -497,6 +500,11 @@ test('provider admin routes require Basic Auth and support review', async () => 
 
     const vendor = getVendorByWhatsAppPhone(FLOW_PHONE);
     assert.ok(vendor);
+    sent.length = 0;
+    setVendorMessageSender(async (params) => {
+      sent.push(params);
+    });
+    upsertMessageSession(FLOW_PHONE, `conversation-${FLOW_PHONE}`, 'connect-account');
     const approve = await fetch(
       `${origin}/admin/providers/${vendor.id}/status`,
       {
@@ -508,6 +516,41 @@ test('provider admin routes require Basic Auth and support review', async () => 
     );
     assert.equal(approve.status, 302);
     assert.equal(getVendorByWhatsAppPhone(FLOW_PHONE)?.status, 'APPROVED');
+    assert.equal(sent.at(-1)?.message, providerReviewDecisionMessage('APPROVED'));
+    assert.equal(sent.at(-1)?.conversationId, `conversation-${FLOW_PHONE}`);
+
+    setVendorStatus(vendor.id, 'UNDER_REVIEW');
+    sent.length = 0;
+    const reject = await fetch(
+      `${origin}/admin/providers/${vendor.id}/status`,
+      {
+        method: 'POST',
+        headers,
+        body: new URLSearchParams({ status: 'REJECTED' }),
+        redirect: 'manual',
+      },
+    );
+    assert.equal(reject.status, 302);
+    assert.equal(getVendorByWhatsAppPhone(FLOW_PHONE)?.status, 'REJECTED');
+    assert.equal(sent.at(-1)?.message, providerReviewDecisionMessage('REJECTED'));
+
+    setVendorStatus(vendor.id, 'UNDER_REVIEW');
+    sent.length = 0;
+    setVendorMessageSender(async () => {
+      throw new Error('WhatsApp send failed');
+    });
+    const approveAfterSendFailure = await fetch(
+      `${origin}/admin/providers/${vendor.id}/status`,
+      {
+        method: 'POST',
+        headers,
+        body: new URLSearchParams({ status: 'APPROVED' }),
+        redirect: 'manual',
+      },
+    );
+    assert.equal(approveAfterSendFailure.status, 302);
+    assert.equal(getVendorByWhatsAppPhone(FLOW_PHONE)?.status, 'APPROVED');
+    assert.equal(sent.length, 0);
 
     const forbiddenStatus = await fetch(
       `${origin}/admin/providers/${vendor.id}/status`,
@@ -518,8 +561,25 @@ test('provider admin routes require Basic Auth and support review', async () => 
       },
     );
     assert.equal(forbiddenStatus.status, 404);
+    assert.equal(getVendorByWhatsAppPhone(FLOW_PHONE)?.status, 'APPROVED');
   });
   process.env.ADMIN_PASSWORD = previous;
+});
+
+test('review decision notify skips missing sessions and does not throw', async () => {
+  const phone = '+15557770041';
+  const vendor = createVendor({
+    whatsappPhone: phone,
+    businessName: 'Notify Skip Kitchen',
+    status: 'UNDER_REVIEW',
+  });
+  sent.length = 0;
+  setVendorMessageSender(async (params) => {
+    sent.push(params);
+  });
+  assert.equal(await notifyProviderReviewDecision(vendor, 'APPROVED'), false);
+  assert.equal(sent.length, 0);
+  assert.equal(getVendorByWhatsAppPhone(phone)?.status, 'UNDER_REVIEW');
 });
 
 test.after(() => {

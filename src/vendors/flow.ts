@@ -2,6 +2,7 @@ import type { CommandContext } from '../commands/organizer.js';
 import { normalizePhone } from '../config.js';
 import {
   getConversationState,
+  getMessageSession,
   setConversationState,
   type ConversationStep,
   type VendorCategory,
@@ -209,6 +210,51 @@ async function reply(
     list,
   });
   return isInboxSendSuccessful(result);
+}
+
+export function providerReviewDecisionMessage(
+  status: 'APPROVED' | 'REJECTED',
+): string {
+  if (status === 'APPROVED') {
+    return [
+      'Your ZipNest provider application was approved.',
+      '',
+      'Open Provider to continue.',
+    ].join('\n');
+  }
+  return [
+    'Your ZipNest provider application was not approved.',
+    '',
+    'Reply Provider if you have questions.',
+  ].join('\n');
+}
+
+export async function notifyProviderReviewDecision(
+  vendor: Pick<Vendor, 'whatsapp_phone'>,
+  status: 'APPROVED' | 'REJECTED',
+): Promise<boolean> {
+  const session = getMessageSession(vendor.whatsapp_phone);
+  if (!session?.conversation_id || !session.account_id) {
+    console.warn(
+      `provider review notify skipped: no WhatsApp session for ${vendor.whatsapp_phone}`,
+    );
+    return false;
+  }
+  try {
+    const result = await sendVendorMessage({
+      conversationId: session.conversation_id,
+      accountId: session.account_id,
+      message: providerReviewDecisionMessage(status),
+    });
+    return isInboxSendSuccessful(result);
+  } catch (error) {
+    console.warn(
+      `provider review notify failed for ${vendor.whatsapp_phone}: ${
+        error instanceof Error ? error.message : error
+      }`,
+    );
+    return false;
+  }
 }
 
 function categoryLabel(category: string | null | undefined): string {

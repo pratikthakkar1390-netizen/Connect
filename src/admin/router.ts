@@ -29,6 +29,7 @@ import {
   createProviderOnboardingInvite,
   listProviderOnboardingSessions,
 } from '../vendors/onboarding.js';
+import { notifyProviderReviewDecision } from '../vendors/flow.js';
 import {
   listVendorsForAdmin,
   setVendorStatus,
@@ -94,16 +95,29 @@ router.post('/providers/invites', (req, res) => {
   }
 });
 
-router.post('/providers/:id/status', (req, res) => {
+router.post('/providers/:id/status', async (req, res) => {
   const id = Number(req.params.id);
   const status = String(req.body?.status ?? '');
-  if (
-    !Number.isInteger(id) ||
-    !['APPROVED', 'REJECTED'].includes(status) ||
-    !setVendorStatus(id, status as 'APPROVED' | 'REJECTED')
-  ) {
+  if (!Number.isInteger(id) || !['APPROVED', 'REJECTED'].includes(status)) {
     res.status(404).send('Not Found');
     return;
+  }
+  const vendor = setVendorStatus(id, status as 'APPROVED' | 'REJECTED');
+  if (!vendor) {
+    res.status(404).send('Not Found');
+    return;
+  }
+  try {
+    await notifyProviderReviewDecision(
+      vendor,
+      status as 'APPROVED' | 'REJECTED',
+    );
+  } catch (error) {
+    console.warn(
+      `provider review notify failed after ${status}: ${
+        error instanceof Error ? error.message : error
+      }`,
+    );
   }
   res.redirect('/admin/providers');
 });
